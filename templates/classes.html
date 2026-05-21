@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Quản lý Lớp{% endblock %}
+
+{% block content %}
+<div class="main-content">
+    <div class="page-header">
+        <h1>Quản lý Lớp học</h1>
+        <p>Xin chào <strong>{{ session.get('hoten') }}</strong> — Quản lý lớp học và sinh viên</p>
+    </div>
+
+    <!-- ========== MY CLASSES ========== -->
+    <div class="section-title">📚 Lớp tôi quản lý</div>
+
+    <div class="card mb-3">
+        <div class="card-header">
+            <h2>Lớp của tôi <span class="badge">{{ my_classes|length }}</span></h2>
+            <button class="btn btn-primary btn-sm" onclick="openModal('addClassModal')">
+                + Thêm lớp
+            </button>
+        </div>
+        <div class="card-body">
+            {% if my_classes %}
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Mã lớp</th>
+                            <th>Tên lớp</th>
+                            <th>Giảng viên</th>
+                            <th style="text-align: right;">Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for lop in my_classes %}
+                        <tr>
+                            <td><strong class="text-accent">{{ lop.MALOP }}</strong></td>
+                            <td>{{ lop.TENLOP }}</td>
+                            <td>{{ session.get('hoten') }}</td>
+                            <td style="text-align: right;">
+                                <div class="table-actions" style="justify-content: flex-end;">
+                                    <a href="{{ url_for('students', malop=lop.MALOP) }}"
+                                       class="btn btn-outline btn-sm">Sinh viên</a>
+                                    <form method="POST" style="display: inline;"
+                                          onsubmit="return confirm('Xóa lớp {{ lop.MALOP }}? Tất cả sinh viên và điểm sẽ bị xóa!')">
+                                        <input type="hidden" name="action" value="delete">
+                                        <input type="hidden" name="malop" value="{{ lop.MALOP }}">
+                                        <button type="submit" class="btn btn-danger btn-sm btn-icon"
+                                                title="Xóa lớp">✕</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <div class="icon">📭</div>
+                <p>Bạn chưa quản lý lớp nào. Hãy thêm lớp mới!</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ========== OTHER CLASSES ========== -->
+    <div class="section-title">🏫 Lớp khác</div>
+
+    <div class="card">
+        <div class="card-header">
+            <h2>Các lớp khác <span class="badge">{{ other_classes|length }}</span></h2>
+        </div>
+        <div class="card-body">
+            {% if other_classes %}
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Mã lớp</th>
+                            <th>Tên lớp</th>
+                            <th>Giảng viên quản lý</th>
+                            <th style="text-align: right;">Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for lop in other_classes %}
+                        <tr>
+                            <td><strong>{{ lop.MALOP }}</strong></td>
+                            <td>{{ lop.TENLOP }}</td>
+                            <td class="text-muted">{{ lop.TENNV or '—' }}</td>
+                            <td style="text-align: right;">
+                                <a href="{{ url_for('students', malop=lop.MALOP) }}"
+                                   class="btn btn-outline btn-sm">Xem sinh viên</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <div class="icon">📋</div>
+                <p>Không có lớp nào khác.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- ========== ADD CLASS MODAL ========== -->
+<div class="modal-overlay" id="addClassModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Thêm lớp mới</h3>
+            <button class="modal-close" onclick="closeModal('addClassModal')">✕</button>
+        </div>
+        <form method="POST">
+            <input type="hidden" name="action" value="add">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="malop">Mã lớp</label>
+                    <input type="text" id="malop" name="malop" class="form-control"
+                           placeholder="Ví dụ: LOP04" required>
+                </div>
+                <div class="form-group">
+                    <label for="tenlop">Tên lớp</label>
+                    <input type="text" id="tenlop" name="tenlop" class="form-control"
+                           placeholder="Ví dụ: CNTT K22 - Nhóm 1" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('addClassModal')">Hủy</button>
+                <button type="submit" class="btn btn-primary">Thêm lớp</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

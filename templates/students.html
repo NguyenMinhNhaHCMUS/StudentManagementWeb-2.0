@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block title %}Sinh viên — {{ lop.TENLOP }}{% endblock %}
+
+{% block content %}
+<div class="main-content">
+    <!-- Breadcrumb -->
+    <div class="breadcrumb">
+        <a href="{{ url_for('classes') }}">Lớp học</a>
+        <span>›</span>
+        <span>{{ lop.TENLOP }} ({{ malop }})</span>
+    </div>
+
+    <div class="page-header">
+        <h1>Sinh viên lớp {{ lop.TENLOP }}</h1>
+        <p>
+            Mã lớp: <strong>{{ malop }}</strong>
+            {% if is_manager %}
+                — <span class="text-accent">Bạn quản lý lớp này</span>
+            {% else %}
+                — <span class="text-muted">Chỉ xem thông tin cơ bản</span>
+            {% endif %}
+        </p>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h2>Danh sách sinh viên <span class="badge">{{ students|length }}</span></h2>
+            {% if is_manager %}
+            <button class="btn btn-primary btn-sm" onclick="openModal('addStudentModal')">
+                + Thêm sinh viên
+            </button>
+            {% endif %}
+        </div>
+        <div class="card-body">
+            {% if students %}
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>MASV</th>
+                            <th>Họ tên</th>
+                            <th>Ngày sinh</th>
+                            <th>Địa chỉ</th>
+                            {% if is_manager %}
+                            <th style="text-align: right;">Thao tác</th>
+                            {% endif %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for sv in students %}
+                        <tr>
+                            <td><strong class="text-accent">{{ sv.MASV }}</strong></td>
+                            <td>{{ sv.HOTEN }}</td>
+                            <td class="text-muted">{{ sv.NGAYSINH.strftime('%d/%m/%Y') if sv.NGAYSINH else '—' }}</td>
+                            <td class="text-muted">{{ sv.DIACHI or '—' }}</td>
+                            {% if is_manager %}
+                            <td style="text-align: right;">
+                                <div class="table-actions" style="justify-content: flex-end;">
+                                    <a href="{{ url_for('grades', malop=malop, masv=sv.MASV) }}"
+                                       class="btn btn-success btn-sm">Điểm</a>
+                                    <button class="btn btn-outline btn-sm"
+                                            onclick="openEditModal('{{ sv.MASV }}', '{{ sv.HOTEN }}', '{{ sv.NGAYSINH.strftime('%Y-%m-%d') if sv.NGAYSINH else '' }}', '{{ sv.DIACHI or '' }}')">
+                                        Sửa
+                                    </button>
+                                    <form method="POST" style="display: inline;"
+                                          onsubmit="return confirm('Xóa sinh viên {{ sv.MASV }}?')">
+                                        <input type="hidden" name="action" value="delete">
+                                        <input type="hidden" name="masv" value="{{ sv.MASV }}">
+                                        <button type="submit" class="btn btn-danger btn-sm btn-icon"
+                                                title="Xóa">✕</button>
+                                    </form>
+                                </div>
+                            </td>
+                            {% endif %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <div class="icon">👤</div>
+                <p>Chưa có sinh viên nào trong lớp này.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% if is_manager %}
+<!-- ========== ADD STUDENT MODAL ========== -->
+<div class="modal-overlay" id="addStudentModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Thêm sinh viên vào {{ malop }}</h3>
+            <button class="modal-close" onclick="closeModal('addStudentModal')">✕</button>
+        </div>
+        <form method="POST">
+            <input type="hidden" name="action" value="add">
+            <div class="modal-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="add_masv">Mã sinh viên</label>
+                        <input type="text" id="add_masv" name="masv" class="form-control"
+                               placeholder="VD: SV06" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="add_hoten">Họ tên</label>
+                        <input type="text" id="add_hoten" name="hoten" class="form-control"
+                               placeholder="Nguyễn Văn X" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="add_ngaysinh">Ngày sinh</label>
+                        <input type="date" id="add_ngaysinh" name="ngaysinh" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label for="add_diachi">Địa chỉ</label>
+                        <input type="text" id="add_diachi" name="diachi" class="form-control"
+                               placeholder="123 ABC, Q1">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="add_tendn">Tên đăng nhập</label>
+                        <input type="text" id="add_tendn" name="tendn" class="form-control"
+                               placeholder="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="add_mk_sv">Mật khẩu</label>
+                        <input type="password" id="add_mk_sv" name="mk_sv" class="form-control"
+                               placeholder="••••••" required>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('addStudentModal')">Hủy</button>
+                <button type="submit" class="btn btn-primary">Thêm sinh viên</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ========== EDIT STUDENT MODAL ========== -->
+<div class="modal-overlay" id="editStudentModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Sửa thông tin sinh viên</h3>
+            <button class="modal-close" onclick="closeModal('editStudentModal')">✕</button>
+        </div>
+        <form method="POST">
+            <input type="hidden" name="action" value="edit">
+            <input type="hidden" id="edit_masv" name="masv">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Mã sinh viên</label>
+                    <input type="text" id="edit_masv_display" class="form-control" disabled>
+                </div>
+                <div class="form-group">
+                    <label for="edit_hoten">Họ tên</label>
+                    <input type="text" id="edit_hoten" name="hoten" class="form-control" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="edit_ngaysinh">Ngày sinh</label>
+                        <input type="date" id="edit_ngaysinh" name="ngaysinh" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit_diachi">Địa chỉ</label>
+                        <input type="text" id="edit_diachi" name="diachi" class="form-control">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('editStudentModal')">Hủy</button>
+                <button type="submit" class="btn btn-primary">Lưu thay đổi</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function openEditModal(masv, hoten, ngaysinh, diachi) {
+        document.getElementById('edit_masv').value = masv;
+        document.getElementById('edit_masv_display').value = masv;
+        document.getElementById('edit_hoten').value = hoten;
+        document.getElementById('edit_ngaysinh').value = ngaysinh;
+        document.getElementById('edit_diachi').value = diachi;
+        openModal('editStudentModal');
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Đăng nhập{% endblock %}
+
+{% block content %}
+<div class="login-wrapper">
+    <div class="login-card">
+        <div class="login-header">
+            <div class="logo">🔐</div>
+            <h1>Đăng nhập Hệ thống</h1>
+            <p>Quản lý Sinh viên — Lab 03 Database Security</p>
+        </div>
+        <div class="login-body">
+            <form method="POST" action="{{ url_for('login') }}">
+                <div class="form-group">
+                    <label for="manv">Mã nhân viên</label>
+                    <input type="text" id="manv" name="manv" class="form-control"
+                           placeholder="Ví dụ: NV01" autocomplete="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="mk">Mật khẩu</label>
+                    <input type="password" id="mk" name="mk" class="form-control"
+                           placeholder="Nhập mật khẩu" autocomplete="current-password" required>
+                </div>
+                <div class="mt-2">
+                    <button type="submit" class="btn btn-primary btn-full" id="btnLogin">
+                        Đăng nhập
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Bảng điểm — {{ sv.HOTEN }}{% endblock %}
+
+{% block content %}
+<div class="main-content">
+    <!-- Breadcrumb -->
+    <div class="breadcrumb">
+        <a href="{{ url_for('classes') }}">Lớp học</a>
+        <span>›</span>
+        <a href="{{ url_for('students', malop=malop) }}">{{ malop }}</a>
+        <span>›</span>
+        <span>Bảng điểm {{ sv.MASV }}</span>
+    </div>
+
+    <div class="page-header">
+        <h1>Bảng điểm — {{ sv.HOTEN }}</h1>
+        <p>Mã sinh viên: <strong>{{ sv.MASV }}</strong> — Lớp: <strong>{{ malop }}</strong></p>
+        <p class="text-muted" style="font-size: 0.8rem; margin-top: 0.25rem;">
+            Điểm được mã hóa bằng RSA_2048 với khóa công khai của {{ session.get('hoten') }}
+        </p>
+    </div>
+
+    <!-- Bảng điểm hiện tại -->
+    <div class="card mb-3">
+        <div class="card-header">
+            <h2>📊 Bảng điểm <span class="badge">{{ grades|length }}</span></h2>
+        </div>
+        <div class="card-body">
+            {% if grades %}
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Mã HP</th>
+                            <th>Tên học phần</th>
+                            <th style="text-align: center;">Điểm thi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for g in grades %}
+                        <tr>
+                            <td><strong>{{ g.MAHP }}</strong></td>
+                            <td>{{ g.TENHP }}</td>
+                            <td style="text-align: center;">
+                                {% if g.DIEMTHI %}
+                                    {% set diem = g.DIEMTHI|float %}
+                                    <span class="grade-chip {{ 'high' if diem >= 8 else ('mid' if diem >= 5 else 'low') }}">
+                                        {{ g.DIEMTHI }}
+                                    </span>
+                                {% else %}
+                                    <span class="text-muted">Không giải mã được</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <div class="icon">📝</div>
+                <p>Chưa có điểm thi nào.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Nhập điểm mới -->
+    <div class="card">
+        <div class="card-header">
+            <h2>➕ Nhập điểm mới</h2>
+        </div>
+        <div class="card-body">
+            <form method="POST">
+                <div class="form-inline">
+                    <div class="form-group" style="flex: 2;">
+                        <label for="mahp">Học phần</label>
+                        <select id="mahp" name="mahp" class="form-control" required>
+                            <option value="">— Chọn học phần —</option>
+                            {% for hp in hocphan_list %}
+                            <option value="{{ hp.MAHP }}">{{ hp.MAHP }} — {{ hp.TENHP }} ({{ hp.SOTC }} TC)</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="diemthi">Điểm thi</label>
+                        <input type="number" id="diemthi" name="diemthi" class="form-control"
+                               step="0.1" min="0" max="10" placeholder="0 — 10" required>
+                    </div>
+                    <div class="form-group" style="flex: 0;">
+                        <label>&nbsp;</label>
+                        <button type="submit" class="btn btn-success">Lưu điểm</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
