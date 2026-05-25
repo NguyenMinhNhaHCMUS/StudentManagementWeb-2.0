@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Quản lý Nhân viên{% endblock %}
+
+{% block content %}
+<div class="main-content">
+    <div class="page-header">
+        <h1>Quản lý Nhân viên</h1>
+        <p>Xem danh sách nhân viên, thêm mới và giải mã lương</p>
+    </div>
+
+    <!-- ========== DECRYPT SALARY ========== -->
+    <div class="section-title">🔓 Xem lương của tôi</div>
+
+    <div class="card mb-3">
+        <div class="card-header">
+            <h2>Lương nhân viên — {{ session.get('manv') }}</h2>
+        </div>
+        <div class="card-body">
+            {% if decrypted_luong %}
+            <div class="salary-display">
+                <div class="salary-label">Lương đã giải mã thành công</div>
+                <div class="salary-value">{{ decrypted_luong }} VNĐ</div>
+                <div class="salary-note">
+                    🔒 Giá trị này chỉ hiển thị trong phiên hiện tại.
+                    Tải lại trang để ẩn.
+                </div>
+            </div>
+            {% else %}
+            <form method="POST">
+                <input type="hidden" name="action" value="decrypt">
+                <div class="form-inline">
+                    <div class="form-group" style="flex: 2;">
+                        <label for="mk_decrypt">Mật khẩu</label>
+                        <input type="password" id="mk_decrypt" name="mk_decrypt" class="form-control"
+                               placeholder="Nhập mật khẩu để giải mã lương" required>
+                    </div>
+                    <div class="form-group" style="flex: 0;">
+                        <label>&nbsp;</label>
+                        <button type="submit" class="btn btn-primary">Xem lương</button>
+                    </div>
+                </div>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ========== EMPLOYEE LIST ========== -->
+    <div class="section-title">👥 Danh sách nhân viên</div>
+
+    <div class="card">
+        <div class="card-header">
+            <h2>Tất cả nhân viên <span class="badge">{{ employees|length }}</span></h2>
+            <button class="btn btn-primary btn-sm" onclick="openModal('addEmployeeModal')">
+                + Thêm NV
+            </button>
+        </div>
+        <div class="card-body">
+            {% if employees %}
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Mã NV</th>
+                            <th>Họ tên</th>
+                            <th>Email</th>
+                            <th style="text-align: center;">Lương</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for nv in employees %}
+                        <tr>
+                            <td><strong class="text-accent">{{ nv.MANV }}</strong></td>
+                            <td>{{ nv.HOTEN }}</td>
+                            <td class="text-muted">{{ nv.EMAIL or '—' }}</td>
+                            <td style="text-align: center;">
+                                <span class="encrypted-badge">🔒 Mã hóa</span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <div class="icon">👤</div>
+                <p>Chưa có nhân viên nào.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- ========== ADD EMPLOYEE MODAL ========== -->
+<div class="modal-overlay" id="addEmployeeModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Thêm nhân viên mới</h3>
+            <button class="modal-close" onclick="closeModal('addEmployeeModal')">✕</button>
+        </div>
+        <form method="POST">
+            <input type="hidden" name="action" value="add">
+            <div class="modal-body">
+                <div class="crypto-note">
+                    🔐 Mật khẩu sẽ được hash SHA2_256 và lương sẽ được mã hóa RSA 2048
+                    <strong>tại client</strong> trước khi gửi xuống CSDL.
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="add_manv">Mã nhân viên</label>
+                        <input type="text" id="add_manv" name="manv" class="form-control"
+                               placeholder="VD: NV04" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="add_hoten">Họ tên</label>
+                        <input type="text" id="add_hoten" name="hoten" class="form-control"
+                               placeholder="Nguyễn Văn X" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="add_email">Email</label>
+                        <input type="email" id="add_email" name="email" class="form-control"
+                               placeholder="abc@fit.edu.vn">
+                    </div>
+                    <div class="form-group">
+                        <label for="add_luong">Lương cơ bản</label>
+                        <input type="number" id="add_luong" name="luong" class="form-control"
+                               placeholder="5000000" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="add_tendn">Tên đăng nhập</label>
+                        <input type="text" id="add_tendn" name="tendn" class="form-control"
+                               placeholder="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="add_mk">Mật khẩu</label>
+                        <input type="password" id="add_mk" name="mk" class="form-control"
+                               placeholder="••••••" required>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('addEmployeeModal')">Hủy</button>
+                <button type="submit" class="btn btn-primary">Thêm nhân viên</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

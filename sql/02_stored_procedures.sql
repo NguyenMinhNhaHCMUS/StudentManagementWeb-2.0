@@ -1,55 +1,47 @@
-USE QLSVNhom;
+USE QLSVNhom1;
 GO
 
--- SP_INS_PUBLIC_NHANVIEN
--- Thêm mới nhân viên:
---   MATKHAU → SHA2_256
---   LUONG   → RSA_2048 (tạo asymmetric key với tên = MANV)
---   PUBKEY  = MANV
-CREATE OR ALTER PROCEDURE SP_INS_PUBLIC_NHANVIEN
+-- ============================================================
+-- Lab 04: Stored Procedures
+-- Tất cả mã hóa/giải mã được thực hiện ở phía CLIENT
+-- Stored procedures chỉ lưu trữ và truy vấn dữ liệu đã mã hóa
+-- ============================================================
+
+-- ============================================================
+-- SP_INS_PUBLIC_ENCRYPT_NHANVIEN
+-- Thêm mới nhân viên với dữ liệu đã được mã hóa từ client:
+--   MATKHAU → đã hash SHA2_256 từ client
+--   LUONG   → đã mã hóa RSA 2048 từ client
+--   PUBKEY  → khóa công khai PEM từ client
+-- ============================================================
+CREATE OR ALTER PROCEDURE SP_INS_PUBLIC_ENCRYPT_NHANVIEN
     @MANV       VARCHAR(20),
     @HOTEN      NVARCHAR(100),
     @EMAIL      VARCHAR(20),
-    @LUONGCB    INT,
+    @LUONG      VARBINARY(MAX),     -- Đã mã hóa RSA từ client
     @TENDN      NVARCHAR(100),
-    @MK         NVARCHAR(100)
+    @MK         VARBINARY(MAX),     -- Đã hash SHA2_256 từ client
+    @PUB        NVARCHAR(MAX)       -- Khóa công khai PEM từ client
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    -- Mã hóa mật khẩu bằng SHA2_256
-    DECLARE @MATKHAU_HASH VARBINARY(MAX);
-    SET @MATKHAU_HASH = HASHBYTES('SHA2_256', @MK + @MANV);
-
-    -- Tạo asymmetric key với tên = MANV, được bảo vệ bởi mật khẩu MK
-    DECLARE @SQL NVARCHAR(MAX);
-    SET @SQL = 'CREATE ASYMMETRIC KEY ' + QUOTENAME(@MANV) +
-               ' WITH ALGORITHM = RSA_2048 ' +
-               'ENCRYPTION BY PASSWORD = ''' + @MK + '''';
-    EXEC sp_executesql @SQL;
-
-    -- Mã hóa lương bằng public key
-    DECLARE @LUONG_ENCRYPTED VARBINARY(MAX);
-    SET @LUONG_ENCRYPTED = ENCRYPTBYASYMKEY(
-        ASYMKEY_ID(@MANV),
-        CAST(@LUONGCB AS VARCHAR(20))
-    );
-
-    -- Thêm nhân viên vào bảng
+    -- Chỉ lưu trữ dữ liệu đã mã hóa, không mã hóa tại server
     INSERT INTO NHANVIEN (MANV, HOTEN, EMAIL, LUONG, TENDN, MATKHAU, PUBKEY)
-    VALUES (@MANV, @HOTEN, @EMAIL, @LUONG_ENCRYPTED, @TENDN, @MATKHAU_HASH, @MANV);
+    VALUES (@MANV, @HOTEN, @EMAIL, @LUONG, @TENDN, @MK, @PUB);
 
     PRINT N'Thêm nhân viên thành công: ' + @MANV;
 END
 GO
 
 -- ============================================================
--- SP_SEL_PUBLIC_NHANVIEN
--- Truy vấn nhân viên và giải mã lương
+-- SP_SEL_PUBLIC_ENCRYPT_NHANVIEN
+-- Truy vấn nhân viên: xác thực và trả về lương đã mã hóa
+-- Client sẽ tự giải mã lương bằng private key
 -- ============================================================
-CREATE OR ALTER PROCEDURE SP_SEL_PUBLIC_NHANVIEN
+CREATE OR ALTER PROCEDURE SP_SEL_PUBLIC_ENCRYPT_NHANVIEN
     @MANV       VARCHAR(20),
-    @MK         NVARCHAR(100)
+    @MK         VARBINARY(MAX)      -- Hash SHA2_256 để xác thực
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -58,42 +50,34 @@ BEGIN
         NV.MANV,
         NV.HOTEN,
         NV.EMAIL,
-        CAST(
-            DECRYPTBYASYMKEY(
-                ASYMKEY_ID(NV.PUBKEY),
-                NV.LUONG,
-                @MK
-            ) AS VARCHAR(20)
-        ) AS LUONGCB
+        NV.LUONG            -- Trả về lương đã mã hóa (client tự giải mã)
     FROM NHANVIEN NV
-    WHERE NV.MANV = @MANV;
+    WHERE NV.MANV = @MANV AND NV.MATKHAU = @MK;
 END
 GO
 
 -- ============================================================
 -- SP_LOGIN
--- Xác thực đăng nhập: so sánh mật khẩu đã hash
--- Trả về thông tin nhân viên nếu đúng
+-- Xác thực đăng nhập: so sánh hash đã tạo từ client
+-- Trả về thông tin nhân viên (không gồm PUBKEY)
 -- ============================================================
 CREATE OR ALTER PROCEDURE SP_LOGIN
     @MANV       VARCHAR(20),
-    @MK         NVARCHAR(100)
+    @MK         VARBINARY(MAX)      -- Đã hash SHA2_256 từ client
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    DECLARE @MATKHAU_HASH VARBINARY(MAX);
-    SET @MATKHAU_HASH = HASHBYTES('SHA2_256', @MK + @MANV);
-
-    SELECT MANV, HOTEN, EMAIL, PUBKEY
+    -- So sánh trực tiếp hash đã tạo từ client
+    SELECT MANV, HOTEN, EMAIL
     FROM NHANVIEN
-    WHERE MANV = @MANV AND MATKHAU = @MATKHAU_HASH;
+    WHERE MANV = @MANV AND MATKHAU = @MK;
 END
 GO
 
 -- ============================================================
 -- SP_INS_SINHVIEN
--- Thêm sinh viên với mật khẩu được hash SHA2_256
+-- Thêm sinh viên: mật khẩu đã hash SHA2_256 từ client
 -- ============================================================
 CREATE OR ALTER PROCEDURE SP_INS_SINHVIEN
     @MASV       VARCHAR(20),
@@ -102,16 +86,14 @@ CREATE OR ALTER PROCEDURE SP_INS_SINHVIEN
     @DIACHI     NVARCHAR(200),
     @MALOP      VARCHAR(20),
     @TENDN      NVARCHAR(100),
-    @MK         NVARCHAR(100)
+    @MK         VARBINARY(MAX)      -- Đã hash SHA2_256 từ client
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    DECLARE @MATKHAU_HASH VARBINARY(MAX);
-    SET @MATKHAU_HASH = HASHBYTES('SHA2_256', @MK + @MASV);
-
+    -- Lưu trực tiếp hash từ client, không hash lại
     INSERT INTO SINHVIEN (MASV, HOTEN, NGAYSINH, DIACHI, MALOP, TENDN, MATKHAU)
-    VALUES (@MASV, @HOTEN, @NGAYSINH, @DIACHI, @MALOP, @TENDN, @MATKHAU_HASH);
+    VALUES (@MASV, @HOTEN, @NGAYSINH, @DIACHI, @MALOP, @TENDN, @MK);
 
     PRINT N'Thêm sinh viên thành công: ' + @MASV;
 END
@@ -202,7 +184,7 @@ GO
 
 -- ============================================================
 -- SP_SEL_SINHVIEN_BY_LOP
--- Lấy danh sách sinh viên theo lớp (thông tin cơ bản, không có điểm)
+-- Lấy danh sách sinh viên theo lớp
 -- ============================================================
 CREATE OR ALTER PROCEDURE SP_SEL_SINHVIEN_BY_LOP
     @MALOP      VARCHAR(20)
@@ -280,12 +262,12 @@ GO
 
 -- ============================================================
 -- SP_INS_BANGDIEM
--- Thêm điểm: mã hóa DIEMTHI bằng public key của nhân viên đã đăng nhập
+-- Thêm/Cập nhật điểm: DIEMTHI đã được mã hóa RSA từ client
 -- ============================================================
 CREATE OR ALTER PROCEDURE SP_INS_BANGDIEM
     @MASV       VARCHAR(20),
     @MAHP       VARCHAR(20),
-    @DIEMTHI    FLOAT,
+    @DIEMTHI    VARBINARY(MAX),     -- Đã mã hóa RSA từ client
     @MANV       VARCHAR(20)
 AS
 BEGIN
@@ -302,28 +284,17 @@ BEGIN
         RETURN;
     END
 
-    -- Lấy tên public key của nhân viên
-    DECLARE @PUBKEY VARCHAR(20);
-    SELECT @PUBKEY = PUBKEY FROM NHANVIEN WHERE MANV = @MANV;
-
-    -- Mã hóa điểm bằng public key
-    DECLARE @DIEM_ENCRYPTED VARBINARY(MAX);
-    SET @DIEM_ENCRYPTED = ENCRYPTBYASYMKEY(
-        ASYMKEY_ID(@PUBKEY),
-        CAST(@DIEMTHI AS VARCHAR(10))
-    );
-
-    -- Kiểm tra nếu đã có điểm thì cập nhật, nếu chưa thì thêm mới
+    -- Lưu trực tiếp dữ liệu đã mã hóa từ client
     IF EXISTS (SELECT 1 FROM BANGDIEM WHERE MASV = @MASV AND MAHP = @MAHP)
     BEGIN
         UPDATE BANGDIEM
-        SET DIEMTHI = @DIEM_ENCRYPTED
+        SET DIEMTHI = @DIEMTHI
         WHERE MASV = @MASV AND MAHP = @MAHP;
     END
     ELSE
     BEGIN
         INSERT INTO BANGDIEM (MASV, MAHP, DIEMTHI)
-        VALUES (@MASV, @MAHP, @DIEM_ENCRYPTED);
+        VALUES (@MASV, @MAHP, @DIEMTHI);
     END
 
     PRINT N'Nhập điểm thành công!';
@@ -332,35 +303,38 @@ GO
 
 -- ============================================================
 -- SP_SEL_BANGDIEM
--- Truy vấn bảng điểm: giải mã DIEMTHI bằng private key + mật khẩu
+-- Truy vấn bảng điểm: trả về DIEMTHI đã mã hóa
+-- Client sẽ tự giải mã bằng private key
 -- ============================================================
 CREATE OR ALTER PROCEDURE SP_SEL_BANGDIEM
     @MASV       VARCHAR(20),
-    @MANV       VARCHAR(20),
-    @MK         NVARCHAR(100)
+    @MANV       VARCHAR(20)
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    DECLARE @PUBKEY VARCHAR(20);
-    SELECT @PUBKEY = PUBKEY FROM NHANVIEN WHERE MANV = @MANV;
+    -- Kiểm tra quyền quản lý
+    IF NOT EXISTS (
+        SELECT 1 FROM SINHVIEN SV
+        INNER JOIN LOP L ON SV.MALOP = L.MALOP AND L.MANV = @MANV
+        WHERE SV.MASV = @MASV
+    )
+    BEGIN
+        RAISERROR(N'Bạn không có quyền xem bảng điểm của sinh viên này!', 16, 1);
+        RETURN;
+    END
 
     SELECT
         BD.MASV,
         BD.MAHP,
         HP.TENHP,
-        CAST(
-            DECRYPTBYASYMKEY(
-                ASYMKEY_ID(@PUBKEY),
-                BD.DIEMTHI,
-                @MK
-            ) AS VARCHAR(10)
-        ) AS DIEMTHI
+        BD.DIEMTHI      -- Trả về dữ liệu đã mã hóa (client tự giải mã)
     FROM BANGDIEM BD
     INNER JOIN HOCPHAN HP ON BD.MAHP = HP.MAHP
     WHERE BD.MASV = @MASV;
 END
 GO
+
 
 -- ============================================================
 -- SP_SEL_ALL_HOCPHAN
@@ -373,6 +347,86 @@ BEGIN
 
     SELECT MAHP, TENHP, SOTC
     FROM HOCPHAN;
+END
+GO
+
+-- ============================================================
+-- SP_SEL_ALL_NHANVIEN_BASIC
+-- Lấy danh sách nhân viên (thông tin cơ bản)
+-- ============================================================
+CREATE OR ALTER PROCEDURE SP_SEL_ALL_NHANVIEN_BASIC
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT MANV, HOTEN, EMAIL
+    FROM NHANVIEN;
+END
+GO
+
+-- ============================================================
+-- SP_SEL_NHANVIEN_PUBKEY
+-- Lấy khóa công khai của nhân viên
+-- ============================================================
+CREATE OR ALTER PROCEDURE SP_SEL_NHANVIEN_PUBKEY
+    @MANV       VARCHAR(20)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT PUBKEY
+    FROM NHANVIEN
+    WHERE MANV = @MANV;
+END
+GO
+
+-- ============================================================
+-- SP_SEL_LOP_BY_ID
+-- Lấy thông tin lớp theo mã lớp
+-- ============================================================
+CREATE OR ALTER PROCEDURE SP_SEL_LOP_BY_ID
+    @MALOP      VARCHAR(20)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT MALOP, TENLOP, MANV
+    FROM LOP
+    WHERE MALOP = @MALOP;
+END
+GO
+
+-- ============================================================
+-- SP_CHECK_LOP_MANAGER
+-- Kiểm tra nhân viên có quản lý lớp không
+-- ============================================================
+CREATE OR ALTER PROCEDURE SP_CHECK_LOP_MANAGER
+    @MALOP      VARCHAR(20),
+    @MANV       VARCHAR(20)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT 1 AS IS_MANAGER
+    FROM LOP
+    WHERE MALOP = @MALOP AND MANV = @MANV;
+END
+GO
+
+-- ============================================================
+-- SP_SEL_SINHVIEN_BY_ID
+-- Lấy thông tin sinh viên theo mã sinh viên và lớp
+-- ============================================================
+CREATE OR ALTER PROCEDURE SP_SEL_SINHVIEN_BY_ID
+    @MASV       VARCHAR(20),
+    @MALOP      VARCHAR(20)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT MASV, HOTEN, MALOP
+    FROM SINHVIEN
+    WHERE MASV = @MASV AND MALOP = @MALOP;
 END
 GO
 

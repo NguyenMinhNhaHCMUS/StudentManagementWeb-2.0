@@ -16,11 +16,41 @@
         <h1>Bảng điểm — {{ sv.HOTEN }}</h1>
         <p>Mã sinh viên: <strong>{{ sv.MASV }}</strong> — Lớp: <strong>{{ malop }}</strong></p>
         <p class="text-muted" style="font-size: 0.8rem; margin-top: 0.25rem;">
-            Điểm được mã hóa bằng RSA_2048 với khóa công khai của {{ session.get('hoten') }}
+            🔐 Điểm được mã hóa RSA 2048 tại <strong>client</strong> bằng public key của {{ session.get('hoten') }}
         </p>
     </div>
 
-    <!-- Bảng điểm hiện tại -->
+    <!-- ========== DECRYPT SECTION ========== -->
+    <div class="card mb-3">
+        <div class="card-header">
+            <h2>🔓 Giải mã điểm</h2>
+        </div>
+        <div class="card-body">
+            {% if is_decrypted %}
+            <div class="salary-display">
+                <div class="salary-label">✓ Điểm đã được giải mã thành công</div>
+                <div class="salary-note">Tải lại trang để ẩn điểm.</div>
+            </div>
+            {% else %}
+            <form method="POST">
+                <input type="hidden" name="action" value="decrypt">
+                <div class="form-inline">
+                    <div class="form-group" style="flex: 2;">
+                        <label for="mk_decrypt">Mật khẩu</label>
+                        <input type="password" id="mk_decrypt" name="mk_decrypt" class="form-control"
+                               placeholder="Nhập mật khẩu để giải mã điểm" required>
+                    </div>
+                    <div class="form-group" style="flex: 0;">
+                        <label>&nbsp;</label>
+                        <button type="submit" class="btn btn-primary">Giải mã</button>
+                    </div>
+                </div>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ========== GRADES TABLE ========== -->
     <div class="card mb-3">
         <div class="card-header">
             <h2>📊 Bảng điểm <span class="badge">{{ grades|length }}</span></h2>
@@ -42,13 +72,13 @@
                             <td><strong>{{ g.MAHP }}</strong></td>
                             <td>{{ g.TENHP }}</td>
                             <td style="text-align: center;">
-                                {% if g.DIEMTHI %}
+                                {% if g.DIEMTHI is not none %}
                                     {% set diem = g.DIEMTHI|float %}
                                     <span class="grade-chip {{ 'high' if diem >= 8 else ('mid' if diem >= 5 else 'low') }}">
                                         {{ g.DIEMTHI }}
                                     </span>
                                 {% else %}
-                                    <span class="text-muted">Không giải mã được</span>
+                                    <span class="encrypted-badge">🔒 Mã hóa</span>
                                 {% endif %}
                             </td>
                         </tr>
@@ -65,13 +95,18 @@
         </div>
     </div>
 
-    <!-- Nhập điểm mới -->
+    <!-- ========== ADD GRADE ========== -->
     <div class="card">
         <div class="card-header">
             <h2>➕ Nhập điểm mới</h2>
         </div>
         <div class="card-body">
+            <div class="crypto-note mb-2">
+                🔐 Điểm sẽ được mã hóa RSA 2048 bằng public key của bạn
+                <strong>tại client</strong> trước khi lưu xuống CSDL.
+            </div>
             <form method="POST">
+                <input type="hidden" name="action" value="add">
                 <div class="form-inline">
                     <div class="form-group" style="flex: 2;">
                         <label for="mahp">Học phần</label>

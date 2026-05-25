@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Hệ thống Quản lý Sinh viên - Lab 03 Database Security">
-    <title>{% block title %}QLSV{% endblock %} — Lab 03 DBSec</title>
+    <meta name="description" content="Hệ thống Quản lý Sinh viên - Lab 04 Database Security">
+    <title>{% block title %}QLSV{% endblock %} — Lab 04 DBSec</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
@@ -13,9 +13,10 @@
     <nav class="navbar">
         <a href="{{ url_for('classes') }}" class="navbar-brand">
             <div class="icon">🔐</div>
-            <span>QLSV Lab03</span>
+            <span>QLSV Lab04</span>
         </a>
         <div class="navbar-links">
+            <a href="{{ url_for('employees') }}" class="{{ 'active' if request.endpoint == 'employees' else '' }}">Quản lý NV</a>
             <a href="{{ url_for('classes') }}" class="{{ 'active' if request.endpoint == 'classes' else '' }}">Quản lý Lớp</a>
         </div>
         <div class="navbar-user">

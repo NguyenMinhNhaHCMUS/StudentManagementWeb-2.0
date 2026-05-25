@@ -1,23 +1,24 @@
 -- ============================================================
--- Lab 03: Tạo Database và các bảng cho hệ thống Quản lý Sinh viên
--- Sử dụng SHA2_256 cho mã hóa mật khẩu, RSA_2048 cho mã hóa dữ liệu
+-- Lab 04: Tạo Database và các bảng cho hệ thống Quản lý Sinh viên
+-- Mã hóa/giải mã được thực hiện ở phía CLIENT (Python)
+-- DB chỉ lưu trữ dữ liệu đã được mã hóa sẵn
 -- ============================================================
 
 -- Tạo Database
 USE master;
 GO
 
-IF EXISTS (SELECT name FROM sys.databases WHERE name = N'QLSVNhom')
+IF EXISTS (SELECT name FROM sys.databases WHERE name = N'QLSVNhom1')
 BEGIN
-    ALTER DATABASE QLSVNhom SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
-    DROP DATABASE QLSVNhom;
+    ALTER DATABASE QLSVNhom1 SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+    DROP DATABASE QLSVNhom1;
 END
 GO
 
-CREATE DATABASE QLSVNhom;
+CREATE DATABASE QLSVNhom1;
 GO
 
-USE QLSVNhom;
+USE QLSVNhom1;
 GO
 
 CREATE TABLE SINHVIEN (
@@ -27,7 +28,7 @@ CREATE TABLE SINHVIEN (
     DIACHI      NVARCHAR(200),
     MALOP       VARCHAR(20),
     TENDN       NVARCHAR(100)   NOT NULL UNIQUE,
-    MATKHAU     VARBINARY(MAX)  NOT NULL
+    MATKHAU     VARBINARY(MAX)  NOT NULL        -- SHA2_256 hash (from client)
 );
 GO
 
@@ -35,10 +36,10 @@ CREATE TABLE NHANVIEN (
     MANV        VARCHAR(20)     PRIMARY KEY,
     HOTEN       NVARCHAR(100)   NOT NULL,
     EMAIL       VARCHAR(20),
-    LUONG       VARBINARY(MAX),
+    LUONG       VARBINARY(MAX),                 -- RSA encrypted (from client)
     TENDN       NVARCHAR(100)   NOT NULL UNIQUE,
-    MATKHAU     VARBINARY(MAX)  NOT NULL,
-    PUBKEY      VARCHAR(20)
+    MATKHAU     VARBINARY(MAX)  NOT NULL,       -- SHA2_256 hash (from client)
+    PUBKEY      NVARCHAR(MAX)                   -- PEM public key (from client)
 );
 GO
 
@@ -59,7 +60,7 @@ GO
 CREATE TABLE BANGDIEM (
     MASV        VARCHAR(20),
     MAHP        VARCHAR(20),
-    DIEMTHI     VARBINARY(MAX),
+    DIEMTHI     VARBINARY(MAX),                 -- RSA encrypted (from client)
     PRIMARY KEY (MASV, MAHP)
 );
 GO
