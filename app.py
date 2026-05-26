@@ -5,7 +5,7 @@ The database only stores and retrieves encrypted data.
 """
 
 import pyodbc
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from functools import wraps
 from datetime import datetime
 from crypto_utils import (
@@ -107,8 +107,6 @@ def employees():
     conn = get_db()
     cursor = conn.cursor()
 
-    decrypted_luong = None
-
     if request.method == 'POST':
         action = request.form.get('action')
 
@@ -153,40 +151,96 @@ def employees():
             else:
                 flash('Vui lòng nhập đầy đủ thông tin!', 'error')
 
-        elif action == 'decrypt':
-            mk_input = request.form.get('mk_decrypt', '').strip()
-            if mk_input:
-                try:
-                    # Load private key from file using password
-                    private_key = load_private_key_file(session['manv'], mk_input)
-
-                    # Client-side: hash password for SP auth
-                    mk_hash = sha256_hash(mk_input, session['manv'])
-
-                    # Get encrypted salary from DB via SP
-                    cursor.execute('EXEC SP_SEL_PUBLIC_ENCRYPT_NHANVIEN ?, ?', session['manv'], mk_hash)
-                    row = cursor.fetchone()
-                    if row and row.LUONG:
-                        # Client-side: decrypt salary
-                        decrypted_luong = rsa_decrypt(private_key, bytes(row.LUONG))
-                    else:
-                        flash('Mật khẩu không đúng hoặc không có dữ liệu lương!', 'warning')
-                    # private_key discarded here — not stored
-                except FileNotFoundError:
-                    flash('Không tìm thấy file khóa bí mật!', 'error')
-                except (ValueError, TypeError):
-                    flash('Mật khẩu không đúng hoặc không thể giải mã!', 'error')
-                except Exception as e:
-                    flash(f'Lỗi giải mã: {str(e)}', 'error')
+        conn.close()
+        return redirect(url_for('employees'))
 
     # Get all employees (basic info only) via SP
     cursor.execute('EXEC SP_SEL_ALL_NHANVIEN_BASIC')
     all_employees = cursor.fetchall()
 
     conn.close()
-    return render_template('employees.html',
-                           employees=all_employees,
-                           decrypted_luong=decrypted_luong)
+    return render_template('employees.html', employees=all_employees)
+
+
+# ---------- SALARY DECRYPT (AJAX) ----------
+
+@app.route('/employees/decrypt', methods=['POST'])
+@login_required
+def decrypt_salary():
+    """AJAX endpoint: decrypt own salary and return JSON. No page reload."""
+    mk_input = request.form.get('mk_decrypt', '').strip()
+    if not mk_input:
+        return jsonify({'error': 'Vui lòng nhập mật khẩu!'}), 400
+
+    try:
+        # Load private key from file using password
+        private_key = load_private_key_file(session['manv'], mk_input)
+
+        # Hash password for SP authentication
+        mk_hash = sha256_hash(mk_input, session['manv'])
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('EXEC SP_SEL_PUBLIC_ENCRYPT_NHANVIEN ?, ?', session['manv'], mk_hash)
+        row = cursor.fetchone()
+        conn.close()
+
+        if row and row.LUONG:
+            # Client-side: decrypt salary
+            luong = rsa_decrypt(private_key, bytes(row.LUONG))
+            # private_key discarded here — not stored
+            return jsonify({'luong': luong})
+        else:
+            return jsonify({'error': 'Mật khẩu không đúng hoặc không có dữ liệu lương!'}), 400
+
+    except FileNotFoundError:
+        return jsonify({'error': 'Không tìm thấy file khóa bí mật!'}), 400
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Mật khẩu không đúng!'}), 400
+    except Exception as e:
+        return jsonify({'error': f'Lỗi giải mã: {str(e)}'}), 400
+
+
+# ---------- SALARY UPDATE (AJAX) ----------
+
+@app.route('/employees/update-salary', methods=['POST'])
+@login_required
+def update_salary():
+    """AJAX endpoint: verify password, re-encrypt new salary, update DB."""
+    mk_input = request.form.get('mk_update', '').strip()
+    luong_new = request.form.get('luong_new', '').strip()
+
+    if not mk_input or not luong_new:
+        return jsonify({'error': 'Vui lòng nhập đầy đủ thông tin!'}), 400
+
+    try:
+        # Verify password by loading private key
+        private_key = load_private_key_file(session['manv'], mk_input)
+
+        # Derive public key from private key
+        pub_key = private_key.public_key()
+
+        # Encrypt new salary with public key
+        luong_encrypted = rsa_encrypt(pub_key, luong_new)
+
+        # Hash password for SP authentication
+        mk_hash = sha256_hash(mk_input, session['manv'])
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('EXEC SP_UPDATE_LUONG ?, ?, ?',
+                       session['manv'], mk_hash, luong_encrypted)
+        conn.commit()
+        conn.close()
+
+        return jsonify({'success': True, 'message': 'Cập nhật lương thành công!'})
+
+    except FileNotFoundError:
+        return jsonify({'error': 'Không tìm thấy file khóa bí mật!'}), 400
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Mật khẩu không đúng!'}), 400
+    except Exception as e:
+        return jsonify({'error': f'Lỗi: {str(e)}'}), 400
 
 
 # ---------- CLASSES ----------
@@ -334,6 +388,33 @@ def students(malop):
             except Exception as e:
                 flash(f'Lỗi: {str(e)}', 'error')
 
+        elif action == 'add_grade':
+            masv = request.form.get('masv', '').strip()
+            mahp = request.form.get('mahp', '').strip()
+            diemthi_str = request.form.get('diemthi', '').strip()
+
+            if masv and mahp and diemthi_str:
+                try:
+                    # Get employee's public key from DB
+                    cursor.execute('EXEC SP_SEL_NHANVIEN_PUBKEY ?', session['manv'])
+                    nv_row = cursor.fetchone()
+                    if nv_row and nv_row.PUBKEY:
+                        public_key = load_public_key_from_pem(nv_row.PUBKEY)
+
+                        # Client-side: encrypt grade with public key
+                        diemthi_encrypted = rsa_encrypt(public_key, diemthi_str)
+
+                        cursor.execute('EXEC SP_INS_BANGDIEM ?, ?, ?, ?',
+                                       masv, mahp, diemthi_encrypted, session['manv'])
+                        conn.commit()
+                        flash(f'Nhập điểm cho {masv} thành công!', 'success')
+                    else:
+                        flash('Không tìm thấy khóa công khai!', 'error')
+                except Exception as e:
+                    flash(f'Lỗi: {str(e)}', 'error')
+            else:
+                flash('Vui lòng nhập đầy đủ thông tin!', 'error')
+
         conn.close()
         return redirect(url_for('students', malop=malop))
 
@@ -341,17 +422,24 @@ def students(malop):
     cursor.execute('EXEC SP_SEL_SINHVIEN_BY_LOP ?', malop)
     student_list = cursor.fetchall()
 
+    # Lấy danh sách học phần (cho modal nhập điểm)
+    hocphan_list = []
+    if is_manager:
+        cursor.execute('EXEC SP_SEL_ALL_HOCPHAN')
+        hocphan_list = cursor.fetchall()
+
     conn.close()
     return render_template('students.html',
                            lop=lop_info,
                            students=student_list,
                            is_manager=is_manager,
-                           malop=malop)
+                           malop=malop,
+                           hocphan_list=hocphan_list)
 
 
 # ---------- GRADES ----------
 
-@app.route('/classes/<malop>/students/<masv>/grades', methods=['GET', 'POST'])
+@app.route('/classes/<malop>/students/<masv>/grades')
 @login_required
 def grades(malop, masv):
     conn = get_db()
@@ -375,104 +463,65 @@ def grades(malop, masv):
         conn.close()
         return redirect(url_for('students', malop=malop))
 
-    grade_list = None
-    is_decrypted = False
-
-    if request.method == 'POST':
-        action = request.form.get('action', 'add')
-
-        if action == 'add':
-            # Thêm điểm — encrypt with public key from DB
-            mahp = request.form.get('mahp', '').strip()
-            diemthi_str = request.form.get('diemthi', '').strip()
-
-            if mahp and diemthi_str:
-                try:
-                    # Get employee's public key from DB
-                    cursor.execute('EXEC SP_SEL_NHANVIEN_PUBKEY ?', session['manv'])
-                    nv_row = cursor.fetchone()
-                    if nv_row and nv_row.PUBKEY:
-                        public_key = load_public_key_from_pem(nv_row.PUBKEY)
-
-                        # Client-side: encrypt grade with public key
-                        diemthi_encrypted = rsa_encrypt(public_key, diemthi_str)
-
-                        cursor.execute('EXEC SP_INS_BANGDIEM ?, ?, ?, ?',
-                                       masv, mahp, diemthi_encrypted, session['manv'])
-                        conn.commit()
-                        flash('Nhập điểm thành công!', 'success')
-                    else:
-                        flash('Không tìm thấy khóa công khai!', 'error')
-                except ValueError:
-                    flash('Điểm thi phải là số!', 'error')
-                except Exception as e:
-                    flash(f'Lỗi: {str(e)}', 'error')
-            else:
-                flash('Vui lòng nhập đầy đủ thông tin!', 'error')
-
-            conn.close()
-            return redirect(url_for('grades', malop=malop, masv=masv))
-
-        elif action == 'decrypt':
-            # Giải mã điểm — user must enter password
-            mk_input = request.form.get('mk_decrypt', '').strip()
-            if mk_input:
-                try:
-                    # Load private key from file using password
-                    private_key = load_private_key_file(session['manv'], mk_input)
-
-                    # Get encrypted grades from DB
-                    cursor.execute('EXEC SP_SEL_BANGDIEM ?, ?', masv, session['manv'])
-                    raw_grades = cursor.fetchall()
-
-                    # Client-side: decrypt each grade
-                    grade_list = []
-                    for g in raw_grades:
-                        diem = None
-                        if g.DIEMTHI:
-                            try:
-                                diem = rsa_decrypt(private_key, bytes(g.DIEMTHI))
-                            except Exception:
-                                diem = None  # Không giải mã được
-                        grade_list.append({
-                            'MASV': g.MASV,
-                            'MAHP': g.MAHP,
-                            'TENHP': g.TENHP,
-                            'DIEMTHI': diem,
-                        })
-                    is_decrypted = True
-                    # private_key discarded here — not stored
-                except FileNotFoundError:
-                    flash('Không tìm thấy file khóa bí mật!', 'error')
-                except (ValueError, TypeError):
-                    flash('Mật khẩu không đúng hoặc không thể giải mã!', 'error')
-                except Exception as e:
-                    flash(f'Lỗi giải mã: {str(e)}', 'error')
-
-    # Default: show encrypted grades (no decryption)
-    if grade_list is None:
-        cursor.execute('EXEC SP_SEL_BANGDIEM ?, ?', masv, session['manv'])
-        raw_grades = cursor.fetchall()
-        grade_list = []
-        for g in raw_grades:
-            grade_list.append({
-                'MASV': g.MASV,
-                'MAHP': g.MAHP,
-                'TENHP': g.TENHP,
-                'DIEMTHI': None,  # Encrypted — not shown
-            })
-
-    # Lấy danh sách học phần
-    cursor.execute('EXEC SP_SEL_ALL_HOCPHAN')
-    hocphan_list = cursor.fetchall()
+    # Always show encrypted grades (decryption happens via AJAX)
+    cursor.execute('EXEC SP_SEL_BANGDIEM ?, ?', masv, session['manv'])
+    raw_grades = cursor.fetchall()
+    grade_list = []
+    for g in raw_grades:
+        grade_list.append({
+            'MASV': g.MASV,
+            'MAHP': g.MAHP,
+            'TENHP': g.TENHP,
+            'DIEMTHI': None,  # Encrypted — decrypted via AJAX
+        })
 
     conn.close()
     return render_template('grades.html',
                            sv=sv_info,
                            grades=grade_list,
-                           hocphan_list=hocphan_list,
-                           malop=malop,
-                           is_decrypted=is_decrypted)
+                           malop=malop)
+
+
+# ---------- GRADES DECRYPT (AJAX) ----------
+
+@app.route('/classes/<malop>/students/<masv>/grades/decrypt', methods=['POST'])
+@login_required
+def decrypt_grades(malop, masv):
+    """AJAX endpoint: decrypt grades and return JSON. No page reload."""
+    mk_input = request.form.get('mk_decrypt', '').strip()
+    if not mk_input:
+        return jsonify({'error': 'Vui lòng nhập mật khẩu!'}), 400
+
+    try:
+        # Load private key from file using password
+        private_key = load_private_key_file(session['manv'], mk_input)
+
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('EXEC SP_SEL_BANGDIEM ?, ?', masv, session['manv'])
+        raw_grades = cursor.fetchall()
+        conn.close()
+
+        # Client-side: decrypt each grade
+        grades = []
+        for g in raw_grades:
+            diem = None
+            if g.DIEMTHI:
+                try:
+                    diem = rsa_decrypt(private_key, bytes(g.DIEMTHI))
+                except Exception:
+                    diem = None  # Không giải mã được
+            grades.append({'MAHP': g.MAHP, 'DIEMTHI': diem})
+        # private_key discarded here — not stored
+
+        return jsonify({'grades': grades})
+
+    except FileNotFoundError:
+        return jsonify({'error': 'Không tìm thấy file khóa bí mật!'}), 400
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Mật khẩu không đúng!'}), 400
+    except Exception as e:
+        return jsonify({'error': f'Lỗi giải mã: {str(e)}'}), 400
 
 
 # ============================================================

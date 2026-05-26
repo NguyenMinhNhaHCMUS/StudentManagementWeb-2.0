@@ -15,19 +15,8 @@
         <div class="card-header">
             <h2>Lương nhân viên — {{ session.get('manv') }}</h2>
         </div>
-        <div class="card-body">
-            {% if decrypted_luong %}
-            <div class="salary-display">
-                <div class="salary-label">Lương đã giải mã thành công</div>
-                <div class="salary-value">{{ decrypted_luong }} VNĐ</div>
-                <div class="salary-note">
-                    🔒 Giá trị này chỉ hiển thị trong phiên hiện tại.
-                    Tải lại trang để ẩn.
-                </div>
-            </div>
-            {% else %}
-            <form method="POST">
-                <input type="hidden" name="action" value="decrypt">
+        <div class="card-body" id="salaryBody">
+            <form id="salaryForm" onsubmit="decryptSalary(event)">
                 <div class="form-inline">
                     <div class="form-group" style="flex: 2;">
                         <label for="mk_decrypt">Mật khẩu</label>
@@ -36,11 +25,43 @@
                     </div>
                     <div class="form-group" style="flex: 0;">
                         <label>&nbsp;</label>
-                        <button type="submit" class="btn btn-primary">Xem lương</button>
+                        <button type="submit" class="btn btn-primary" id="salaryBtn">Xem lương</button>
                     </div>
                 </div>
             </form>
-            {% endif %}
+        </div>
+    </div>
+
+    <!-- ========== UPDATE SALARY ========== -->
+    <div class="section-title">✏️ Cập nhật lương</div>
+
+    <div class="card mb-3">
+        <div class="card-header">
+            <h2>Cập nhật lương — {{ session.get('manv') }}</h2>
+        </div>
+        <div class="card-body" id="updateSalaryBody">
+            <div class="crypto-note mb-2">
+                🔐 Lương mới sẽ được mã hóa RSA 2048 bằng public key của bạn
+                <strong>tại client</strong> trước khi lưu xuống CSDL.
+            </div>
+            <form id="updateSalaryForm" onsubmit="updateSalary(event)">
+                <div class="form-inline">
+                    <div class="form-group" style="flex: 1;">
+                        <label for="luong_new">Lương mới</label>
+                        <input type="number" id="luong_new" name="luong_new" class="form-control"
+                               placeholder="VD: 5000000" required>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="mk_update">Mật khẩu xác nhận</label>
+                        <input type="password" id="mk_update" name="mk_update" class="form-control"
+                               placeholder="Nhập mật khẩu để xác nhận" required>
+                    </div>
+                    <div class="form-group" style="flex: 0;">
+                        <label>&nbsp;</label>
+                        <button type="submit" class="btn btn-accent" id="updateSalaryBtn">Cập nhật</button>
+                    </div>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -149,3 +170,108 @@
     </div>
 </div>
 {% endblock %}
+
+{% block scripts %}
+<script>
+    async function decryptSalary(e) {
+        e.preventDefault();
+
+        const password = document.getElementById('mk_decrypt').value;
+        const btn = document.getElementById('salaryBtn');
+
+        btn.disabled = true;
+        btn.textContent = 'Đang giải mã...';
+
+        try {
+            const resp = await fetch('{{ url_for("decrypt_salary") }}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'mk_decrypt=' + encodeURIComponent(password)
+            });
+
+            const data = await resp.json();
+
+            if (data.error) {
+                showFlash(data.error, 'error');
+                btn.disabled = false;
+                btn.textContent = 'Xem lương';
+                return;
+            }
+
+            document.getElementById('salaryBody').innerHTML =
+                '<div class="salary-display">' +
+                    '<div class="salary-label">Lương đã giải mã thành công</div>' +
+                    '<div class="salary-value">' + data.luong + ' VNĐ</div>' +
+                    '<div class="salary-note">🔒 Tải lại trang để ẩn.</div>' +
+                '</div>';
+
+        } catch (err) {
+            showFlash('Lỗi kết nối: ' + err.message, 'error');
+            btn.disabled = false;
+            btn.textContent = 'Xem lương';
+        }
+    }
+
+    async function updateSalary(e) {
+        e.preventDefault();
+
+        const luongNew = document.getElementById('luong_new').value;
+        const password = document.getElementById('mk_update').value;
+        const btn = document.getElementById('updateSalaryBtn');
+
+        btn.disabled = true;
+        btn.textContent = 'Đang cập nhật...';
+
+        try {
+            const resp = await fetch('{{ url_for("update_salary") }}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'luong_new=' + encodeURIComponent(luongNew) +
+                      '&mk_update=' + encodeURIComponent(password)
+            });
+
+            const data = await resp.json();
+
+            if (data.error) {
+                showFlash(data.error, 'error');
+            } else {
+                showFlash(data.message, 'success');
+                // Clear form
+                document.getElementById('luong_new').value = '';
+                document.getElementById('mk_update').value = '';
+            }
+
+            btn.disabled = false;
+            btn.textContent = 'Cập nhật';
+
+        } catch (err) {
+            showFlash('Lỗi kết nối: ' + err.message, 'error');
+            btn.disabled = false;
+            btn.textContent = 'Cập nhật';
+        }
+    }
+
+    function showFlash(message, category) {
+        let container = document.getElementById('flashContainer');
+        if (!container) {
+            container = document.createElement('div');
+            container.className = 'flash-container';
+            container.id = 'flashContainer';
+            document.body.insertBefore(container, document.querySelector('.main-content'));
+        }
+        const icon = category === 'error' ? '✕' : (category === 'success' ? '✓' : 'ℹ');
+        const div = document.createElement('div');
+        div.className = 'flash-message ' + category;
+        div.textContent = icon + ' ' + message;
+        div.onclick = () => div.remove();
+        container.appendChild(div);
+
+        setTimeout(() => {
+            div.style.opacity = '0';
+            div.style.transform = 'translateX(1rem)';
+            setTimeout(() => div.remove(), 300);
+        }, 5000);
+    }
+</script>
+{% endblock %}
+

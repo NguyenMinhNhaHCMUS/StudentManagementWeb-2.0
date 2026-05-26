@@ -449,6 +449,17 @@ select.form-control option {
     transform: translateY(-1px);
 }
 
+.btn-accent {
+    background: linear-gradient(135deg, var(--accent-amber), #f59e0b);
+    color: #1a1a2e;
+    box-shadow: 0 4px 16px rgba(251, 191, 36, 0.3);
+}
+
+.btn-accent:hover {
+    box-shadow: 0 6px 24px rgba(251, 191, 36, 0.45);
+    transform: translateY(-1px);
+}
+
 .btn-sm {
     padding: 0.4rem 0.75rem;
     font-size: 0.75rem;

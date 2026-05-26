@@ -58,10 +58,10 @@
                                 <div class="table-actions" style="justify-content: flex-end;">
                                     <a href="{{ url_for('grades', malop=malop, masv=sv.MASV) }}"
                                        class="btn btn-success btn-sm">Điểm</a>
+                                    <button class="btn btn-accent btn-sm"
+                                            onclick="openGradeModal('{{ sv.MASV }}', '{{ sv.HOTEN }}')">+ Nhập điểm</button>
                                     <button class="btn btn-outline btn-sm"
-                                            onclick="openEditModal('{{ sv.MASV }}', '{{ sv.HOTEN }}', '{{ sv.NGAYSINH.strftime('%Y-%m-%d') if sv.NGAYSINH else '' }}', '{{ sv.DIACHI or '' }}')">
-                                        Sửa
-                                    </button>
+                                            onclick="openEditModal('{{ sv.MASV }}', '{{ sv.HOTEN }}', '{{ sv.NGAYSINH.strftime('%Y-%m-%d') if sv.NGAYSINH else '' }}', '{{ sv.DIACHI or '' }}')">Sửa</button>
                                     <form method="POST" style="display: inline;"
                                           onsubmit="return confirm('Xóa sinh viên {{ sv.MASV }}?')">
                                         <input type="hidden" name="action" value="delete">
@@ -179,6 +179,50 @@
         </form>
     </div>
 </div>
+
+<!-- ========== ADD GRADE MODAL ========== -->
+<div class="modal-overlay" id="addGradeModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Nhập điểm cho sinh viên</h3>
+            <button class="modal-close" onclick="closeModal('addGradeModal')">✕</button>
+        </div>
+        <form method="POST">
+            <input type="hidden" name="action" value="add_grade">
+            <input type="hidden" id="grade_masv" name="masv">
+            <div class="modal-body">
+                <div class="crypto-note mb-2">
+                    🔐 Điểm sẽ được mã hóa RSA 2048 bằng public key của bạn
+                    <strong>tại client</strong> trước khi lưu xuống CSDL.
+                </div>
+                <div class="form-group">
+                    <label>Sinh viên</label>
+                    <input type="text" id="grade_sv_display" class="form-control" disabled>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="grade_mahp">Học phần</label>
+                        <select id="grade_mahp" name="mahp" class="form-control" required>
+                            <option value="">— Chọn học phần —</option>
+                            {% for hp in hocphan_list %}
+                            <option value="{{ hp.MAHP }}">{{ hp.MAHP }} — {{ hp.TENHP }} ({{ hp.SOTC }} TC)</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="grade_diemthi">Điểm thi</label>
+                        <input type="number" id="grade_diemthi" name="diemthi" class="form-control"
+                               step="0.1" min="0" max="10" placeholder="0 — 10" required>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeModal('addGradeModal')">Hủy</button>
+                <button type="submit" class="btn btn-primary">Lưu điểm</button>
+            </div>
+        </form>
+    </div>
+</div>
 {% endif %}
 {% endblock %}
 
@@ -191,6 +235,14 @@
         document.getElementById('edit_ngaysinh').value = ngaysinh;
         document.getElementById('edit_diachi').value = diachi;
         openModal('editStudentModal');
+    }
+
+    function openGradeModal(masv, hoten) {
+        document.getElementById('grade_masv').value = masv;
+        document.getElementById('grade_sv_display').value = masv + ' — ' + hoten;
+        document.getElementById('grade_mahp').value = '';
+        document.getElementById('grade_diemthi').value = '';
+        openModal('addGradeModal');
     }
 </script>
 {% endblock %}

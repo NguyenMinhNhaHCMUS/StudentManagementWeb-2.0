@@ -21,19 +21,12 @@
     </div>
 
     <!-- ========== DECRYPT SECTION ========== -->
-    <div class="card mb-3">
+    <div class="card mb-3" id="decryptCard">
         <div class="card-header">
             <h2>🔓 Giải mã điểm</h2>
         </div>
-        <div class="card-body">
-            {% if is_decrypted %}
-            <div class="salary-display">
-                <div class="salary-label">✓ Điểm đã được giải mã thành công</div>
-                <div class="salary-note">Tải lại trang để ẩn điểm.</div>
-            </div>
-            {% else %}
-            <form method="POST">
-                <input type="hidden" name="action" value="decrypt">
+        <div class="card-body" id="decryptBody">
+            <form id="decryptForm" onsubmit="decryptGrades(event)">
                 <div class="form-inline">
                     <div class="form-group" style="flex: 2;">
                         <label for="mk_decrypt">Mật khẩu</label>
@@ -42,18 +35,17 @@
                     </div>
                     <div class="form-group" style="flex: 0;">
                         <label>&nbsp;</label>
-                        <button type="submit" class="btn btn-primary">Giải mã</button>
+                        <button type="submit" class="btn btn-primary" id="decryptBtn">Giải mã</button>
                     </div>
                 </div>
             </form>
-            {% endif %}
         </div>
     </div>
 
     <!-- ========== GRADES TABLE ========== -->
     <div class="card mb-3">
         <div class="card-header">
-            <h2>📊 Bảng điểm <span class="badge">{{ grades|length }}</span></h2>
+            <h2>📊 Bảng điểm <span class="badge" id="gradeCount">{{ grades|length }}</span></h2>
         </div>
         <div class="card-body">
             {% if grades %}
@@ -66,20 +58,13 @@
                             <th style="text-align: center;">Điểm thi</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="gradesTableBody">
                         {% for g in grades %}
                         <tr>
                             <td><strong>{{ g.MAHP }}</strong></td>
                             <td>{{ g.TENHP }}</td>
-                            <td style="text-align: center;">
-                                {% if g.DIEMTHI is not none %}
-                                    {% set diem = g.DIEMTHI|float %}
-                                    <span class="grade-chip {{ 'high' if diem >= 8 else ('mid' if diem >= 5 else 'low') }}">
-                                        {{ g.DIEMTHI }}
-                                    </span>
-                                {% else %}
-                                    <span class="encrypted-badge">🔒 Mã hóa</span>
-                                {% endif %}
+                            <td style="text-align: center;" data-mahp="{{ g.MAHP }}">
+                                <span class="encrypted-badge">🔒 Mã hóa</span>
                             </td>
                         </tr>
                         {% endfor %}
@@ -94,41 +79,88 @@
             {% endif %}
         </div>
     </div>
-
-    <!-- ========== ADD GRADE ========== -->
-    <div class="card">
-        <div class="card-header">
-            <h2>➕ Nhập điểm mới</h2>
-        </div>
-        <div class="card-body">
-            <div class="crypto-note mb-2">
-                🔐 Điểm sẽ được mã hóa RSA 2048 bằng public key của bạn
-                <strong>tại client</strong> trước khi lưu xuống CSDL.
-            </div>
-            <form method="POST">
-                <input type="hidden" name="action" value="add">
-                <div class="form-inline">
-                    <div class="form-group" style="flex: 2;">
-                        <label for="mahp">Học phần</label>
-                        <select id="mahp" name="mahp" class="form-control" required>
-                            <option value="">— Chọn học phần —</option>
-                            {% for hp in hocphan_list %}
-                            <option value="{{ hp.MAHP }}">{{ hp.MAHP }} — {{ hp.TENHP }} ({{ hp.SOTC }} TC)</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="form-group" style="flex: 1;">
-                        <label for="diemthi">Điểm thi</label>
-                        <input type="number" id="diemthi" name="diemthi" class="form-control"
-                               step="0.1" min="0" max="10" placeholder="0 — 10" required>
-                    </div>
-                    <div class="form-group" style="flex: 0;">
-                        <label>&nbsp;</label>
-                        <button type="submit" class="btn btn-success">Lưu điểm</button>
-                    </div>
-                </div>
-            </form>
-        </div>
-    </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    async function decryptGrades(e) {
+        e.preventDefault();
+
+        const password = document.getElementById('mk_decrypt').value;
+        const btn = document.getElementById('decryptBtn');
+
+        // Disable button while processing
+        btn.disabled = true;
+        btn.textContent = 'Đang giải mã...';
+
+        try {
+            const resp = await fetch('{{ url_for("decrypt_grades", malop=malop, masv=sv.MASV) }}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'mk_decrypt=' + encodeURIComponent(password)
+            });
+
+            const data = await resp.json();
+
+            if (data.error) {
+                // Show error flash
+                showFlash(data.error, 'error');
+                btn.disabled = false;
+                btn.textContent = 'Giải mã';
+                return;
+            }
+
+            // Update table cells with decrypted grades
+            data.grades.forEach(g => {
+                const cell = document.querySelector(`[data-mahp="${g.MAHP}"]`);
+                if (cell) {
+                    if (g.DIEMTHI !== null) {
+                        const diem = parseFloat(g.DIEMTHI);
+                        const cls = diem >= 8 ? 'high' : (diem >= 5 ? 'mid' : 'low');
+                        cell.innerHTML = `<span class="grade-chip ${cls}">${g.DIEMTHI}</span>`;
+                    } else {
+                        cell.innerHTML = '<span class="encrypted-badge">⚠ Không giải mã được</span>';
+                    }
+                }
+            });
+
+            // Update decrypt section to show success
+            document.getElementById('decryptBody').innerHTML =
+                '<div class="salary-display">' +
+                    '<div class="salary-label">✓ Điểm đã được giải mã thành công</div>' +
+                    '<div class="salary-note">Tải lại trang để ẩn điểm.</div>' +
+                '</div>';
+
+        } catch (err) {
+            showFlash('Lỗi kết nối: ' + err.message, 'error');
+            btn.disabled = false;
+            btn.textContent = 'Giải mã';
+        }
+    }
+
+    // Helper: show flash message dynamically
+    function showFlash(message, category) {
+        let container = document.getElementById('flashContainer');
+        if (!container) {
+            container = document.createElement('div');
+            container.className = 'flash-container';
+            container.id = 'flashContainer';
+            document.body.insertBefore(container, document.querySelector('.main-content'));
+        }
+        const icon = category === 'error' ? '✕' : (category === 'success' ? '✓' : 'ℹ');
+        const div = document.createElement('div');
+        div.className = 'flash-message ' + category;
+        div.textContent = icon + ' ' + message;
+        div.onclick = () => div.remove();
+        container.appendChild(div);
+
+        // Auto-dismiss after 5s
+        setTimeout(() => {
+            div.style.opacity = '0';
+            div.style.transform = 'translateX(1rem)';
+            setTimeout(() => div.remove(), 300);
+        }, 5000);
+    }
+</script>
 {% endblock %}
