@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Đăng ký tài khoản{% endblock %}
+
+{% block content %}
+<div class="login-wrapper">
+    <div class="login-card" style="max-width: 520px;">
+        <div class="login-header">
+            <div class="logo">✨</div>
+            <h1>Tạo tài khoản</h1>
+            <p>Quản lý Sinh viên — Lab 04 Database Security</p>
+        </div>
+        <div class="login-body">
+            <div class="crypto-note mb-2" style="font-size: 0.78rem;">
+                🔐 Mật khẩu được hash SHA-256 và lương được mã hóa RSA-2048
+                <strong>tại client</strong> trước khi gửi xuống server.
+                Khóa RSA được sinh <strong>xác định</strong> từ mật khẩu — không lưu file.
+            </div>
+
+            <form method="POST" action="{{ url_for('register') }}" id="registerForm">
+                <div class="crypto-note mb-2" style="font-size: 0.78rem;">
+                    🆔 Mã nhân viên được tạo tự động theo thứ tự hiện tại.
+                </div>
+
+                <div class="form-group">
+                    <label for="hoten">Họ tên</label>
+                    <input type="text" id="hoten" name="hoten" class="form-control"
+                           placeholder="Nguyễn Văn X" required
+                           value="{{ form.hoten or '' }}">
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="email">Email</label>
+                        <input type="email" id="email" name="email" class="form-control"
+                               placeholder="abc@fit.edu.vn"
+                               value="{{ form.email or '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="luong">Lương cơ bản (VNĐ)</label>
+                        <input type="number" id="luong" name="luong" class="form-control"
+                               placeholder="VD: 5000000" min="0"
+                               value="{{ form.luong or '' }}">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="tendn">Tên đăng nhập</label>
+                    <input type="text" id="tendn" name="tendn" class="form-control"
+                           placeholder="username" required
+                           value="{{ form.tendn or '' }}">
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="mk">Mật khẩu</label>
+                        <input type="password" id="mk" name="mk" class="form-control"
+                               placeholder="Tối thiểu 6 ký tự" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="mk_confirm">Xác nhận mật khẩu</label>
+                        <input type="password" id="mk_confirm" name="mk_confirm" class="form-control"
+                               placeholder="Nhập lại mật khẩu" required>
+                    </div>
+                </div>
+
+                <div class="mt-2">
+                    <button type="submit" class="btn btn-primary btn-full" id="btnRegister">
+                        Tạo tài khoản
+                    </button>
+                </div>
+            </form>
+
+            <div class="mt-2" style="text-align: center;">
+                <span style="color: var(--text-muted); font-size: 0.875rem;">
+                    Đã có tài khoản?
+                    <a href="{{ url_for('login') }}" style="color: var(--accent-indigo);">Đăng nhập</a>
+                </span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.getElementById('registerForm').addEventListener('submit', function(e) {
+        const mk = document.getElementById('mk').value;
+        const confirm = document.getElementById('mk_confirm').value;
+        if (mk !== confirm) {
+            e.preventDefault();
+            // Show inline error
+            const btn = document.getElementById('btnRegister');
+            const old = btn.textContent;
+            btn.textContent = '✕ Mật khẩu không khớp!';
+            btn.style.background = 'var(--gradient-danger)';
+            setTimeout(() => {
+                btn.textContent = old;
+                btn.style.background = '';
+            }, 2500);
+            document.getElementById('mk_confirm').focus();
+        }
+
+        if (mk.length < 6) {
+            e.preventDefault();
+            alert('Mật khẩu phải có ít nhất 6 ký tự!');
+        }
+    });
+</script>
+{% endblock %}

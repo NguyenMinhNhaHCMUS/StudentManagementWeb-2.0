@@ -9,9 +9,8 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 from functools import wraps
 from datetime import datetime
 from crypto_utils import (
-    sha256_hash, generate_rsa_keypair, serialize_public_key,
-    load_public_key_from_pem, save_private_key_file, load_private_key_file,
-    rsa_encrypt, rsa_decrypt,
+    sha256_hash, derive_rsa_from_password, serialize_public_key,
+    load_public_key_from_pem, rsa_encrypt, rsa_decrypt,
 )
 
 app = Flask(__name__)
@@ -78,10 +77,12 @@ def login():
             conn.close()
 
             if row:
-                # Only store basic info — NO password, NO keys in session
+                # Store basic info + password (needed for RSA key derivation)
                 session['manv'] = row.MANV
                 session['hoten'] = row.HOTEN
                 session['email'] = row.EMAIL
+                session['role'] = int(row.ROLE) if row.ROLE is not None else 0
+                session['password'] = mk  # used to derive RSA key on demand
                 flash(f'Đăng nhập thành công! Xin chào {row.HOTEN}', 'success')
                 return redirect(url_for('classes'))
             else:
@@ -99,7 +100,87 @@ def logout():
     return redirect(url_for('login'))
 
 
-# ---------- EMPLOYEES ----------
+# ---------- REGISTER ----------
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    """Self-registration: anyone can create a new employee account."""
+    form = {}
+
+    if request.method == 'POST':
+        hoten  = request.form.get('hoten',      '').strip()
+        email  = request.form.get('email',      '').strip()
+        luong_str = request.form.get('luong',   '').strip()
+        tendn  = request.form.get('tendn',      '').strip()
+        mk     = request.form.get('mk',         '').strip()
+        mk_confirm = request.form.get('mk_confirm', '').strip()
+
+        # Preserve form values for re-display on error
+        form = {'hoten': hoten, 'email': email,
+            'luong': luong_str, 'tendn': tendn}
+
+        # Server-side validation
+        if not all([hoten, tendn, mk]):
+            flash('Vui lòng nhập đầy đủ các trường bắt buộc!', 'error')
+            return render_template('register.html', form=form)
+
+        if mk != mk_confirm:
+            flash('Mật khẩu xác nhận không khớp!', 'error')
+            return render_template('register.html', form=form)
+
+        if len(mk) < 6:
+            flash('Mật khẩu phải có ít nhất 6 ký tự!', 'error')
+            return render_template('register.html', form=form)
+
+        luong_val = luong_str if luong_str else '0'
+
+        try:
+            conn = get_db()
+            cursor = conn.cursor()
+
+            cursor.execute('SELECT COUNT(1) FROM NHANVIEN')
+            row = cursor.fetchone()
+            next_index = (int(row[0]) if row else 0) + 1
+            while True:
+                manv = f'NV{next_index:02d}'
+                cursor.execute('SELECT 1 FROM NHANVIEN WHERE MANV = ?', manv)
+                if cursor.fetchone() is None:
+                    break
+                next_index += 1
+
+            # Client-side: derive RSA key pair from password (deterministic — no file)
+            private_key = derive_rsa_from_password(mk, manv)
+            pub_pem     = serialize_public_key(private_key)
+
+            # Client-side: hash password
+            mk_hash = sha256_hash(mk, manv)
+
+            # Client-side: encrypt salary with derived public key
+            luong_encrypted = rsa_encrypt(private_key.publickey(), luong_val)
+
+            cursor.execute(
+                'EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN ?, ?, ?, ?, ?, ?, ?, ?',
+                manv, hoten, email, luong_encrypted, tendn, mk_hash, pub_pem, 0,
+            )
+            conn.commit()
+            conn.close()
+
+            flash(f'Tạo tài khoản thành công! Đăng nhập với mã: {manv}', 'success')
+            return redirect(url_for('login'))
+
+        except Exception as e:
+            err = str(e)
+            if 'PRIMARY KEY' in err or 'duplicate key' in err.lower():
+                flash('Mã nhân viên đã tồn tại! Vui lòng chọn mã khác.', 'error')
+            elif 'UNIQUE' in err:
+                flash('Tên đăng nhập đã tồn tại! Vui lòng chọn tên khác.', 'error')
+            else:
+                flash(f'Lỗi: {err}', 'error')
+
+    return render_template('register.html', form=form)
+
+
+
 
 @app.route('/employees', methods=['GET', 'POST'])
 @login_required
@@ -111,45 +192,7 @@ def employees():
         action = request.form.get('action')
 
         if action == 'add':
-            manv_new = request.form.get('manv', '').strip()
-            hoten = request.form.get('hoten', '').strip()
-            email = request.form.get('email', '').strip()
-            luong_str = request.form.get('luong', '').strip()
-            tendn = request.form.get('tendn', '').strip()
-            mk_new = request.form.get('mk', '').strip()
-
-            if manv_new and hoten and tendn and mk_new and luong_str:
-                try:
-                    # Client-side: generate RSA key pair
-                    private_key, public_key = generate_rsa_keypair()
-                    pub_pem = serialize_public_key(public_key)
-
-                    # Client-side: hash password
-                    mk_hash = sha256_hash(mk_new, manv_new)
-
-                    # Client-side: encrypt salary with public key
-                    luong_encrypted = rsa_encrypt(public_key, luong_str)
-
-                    # Save private key file (encrypted with password)
-                    save_private_key_file(manv_new, private_key, mk_new)
-
-                    # Send pre-encrypted data to DB
-                    cursor.execute(
-                        'EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN ?, ?, ?, ?, ?, ?, ?',
-                        manv_new, hoten, email, luong_encrypted, tendn, mk_hash, pub_pem,
-                    )
-                    conn.commit()
-                    flash(f'Thêm nhân viên {manv_new} thành công!', 'success')
-                except Exception as e:
-                    error_msg = str(e)
-                    if 'PRIMARY KEY' in error_msg or 'duplicate key' in error_msg.lower():
-                        flash('Mã nhân viên đã tồn tại!', 'error')
-                    elif 'UNIQUE' in error_msg:
-                        flash('Tên đăng nhập đã tồn tại!', 'error')
-                    else:
-                        flash(f'Lỗi: {error_msg}', 'error')
-            else:
-                flash('Vui lòng nhập đầy đủ thông tin!', 'error')
+            flash('Tính năng thêm nhân viên đã được tắt.', 'warning')
 
         conn.close()
         return redirect(url_for('employees'))
@@ -160,6 +203,43 @@ def employees():
 
     conn.close()
     return render_template('employees.html', employees=all_employees)
+
+
+# ---------- ADMIN SALARY UPDATE (AJAX) ----------
+
+@app.route('/employees/admin-update-salary', methods=['POST'])
+@login_required
+def admin_update_salary():
+    if session.get('role') != 1:
+        return jsonify({'error': 'Bạn không có quyền admin!'}), 403
+
+    manv_target = request.form.get('manv', '').strip().upper()
+    luong_new = request.form.get('luong_new', '').strip()
+
+    if not manv_target or not luong_new:
+        return jsonify({'error': 'Vui lòng nhập đầy đủ thông tin!'}), 400
+
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        cursor.execute('EXEC SP_SEL_NHANVIEN_PUBKEY ?', manv_target)
+        row = cursor.fetchone()
+        if not row or not row.PUBKEY:
+            conn.close()
+            return jsonify({'error': 'Không tìm thấy khóa công khai của nhân viên!'}), 400
+
+        public_key = load_public_key_from_pem(row.PUBKEY)
+        luong_encrypted = rsa_encrypt(public_key, luong_new)
+
+        cursor.execute('EXEC SP_UPDATE_LUONG_ADMIN ?, ?', manv_target, luong_encrypted)
+        conn.commit()
+        conn.close()
+
+        return jsonify({'success': True, 'message': f'Đã cập nhật lương cho {manv_target}.'})
+
+    except Exception as e:
+        return jsonify({'error': f'Lỗi: {str(e)}'}), 400
 
 
 # ---------- SALARY DECRYPT (AJAX) ----------
@@ -173,8 +253,8 @@ def decrypt_salary():
         return jsonify({'error': 'Vui lòng nhập mật khẩu!'}), 400
 
     try:
-        # Load private key from file using password
-        private_key = load_private_key_file(session['manv'], mk_input)
+        # Derive private key from password (deterministic — no file needed)
+        private_key = derive_rsa_from_password(mk_input, session['manv'])
 
         # Hash password for SP authentication
         mk_hash = sha256_hash(mk_input, session['manv'])
@@ -199,48 +279,6 @@ def decrypt_salary():
         return jsonify({'error': 'Mật khẩu không đúng!'}), 400
     except Exception as e:
         return jsonify({'error': f'Lỗi giải mã: {str(e)}'}), 400
-
-
-# ---------- SALARY UPDATE (AJAX) ----------
-
-@app.route('/employees/update-salary', methods=['POST'])
-@login_required
-def update_salary():
-    """AJAX endpoint: verify password, re-encrypt new salary, update DB."""
-    mk_input = request.form.get('mk_update', '').strip()
-    luong_new = request.form.get('luong_new', '').strip()
-
-    if not mk_input or not luong_new:
-        return jsonify({'error': 'Vui lòng nhập đầy đủ thông tin!'}), 400
-
-    try:
-        # Verify password by loading private key
-        private_key = load_private_key_file(session['manv'], mk_input)
-
-        # Derive public key from private key
-        pub_key = private_key.public_key()
-
-        # Encrypt new salary with public key
-        luong_encrypted = rsa_encrypt(pub_key, luong_new)
-
-        # Hash password for SP authentication
-        mk_hash = sha256_hash(mk_input, session['manv'])
-
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('EXEC SP_UPDATE_LUONG ?, ?, ?',
-                       session['manv'], mk_hash, luong_encrypted)
-        conn.commit()
-        conn.close()
-
-        return jsonify({'success': True, 'message': 'Cập nhật lương thành công!'})
-
-    except FileNotFoundError:
-        return jsonify({'error': 'Không tìm thấy file khóa bí mật!'}), 400
-    except (ValueError, TypeError):
-        return jsonify({'error': 'Mật khẩu không đúng!'}), 400
-    except Exception as e:
-        return jsonify({'error': f'Lỗi: {str(e)}'}), 400
 
 
 # ---------- CLASSES ----------
@@ -395,21 +433,17 @@ def students(malop):
 
             if masv and mahp and diemthi_str:
                 try:
-                    # Get employee's public key from DB
-                    cursor.execute('EXEC SP_SEL_NHANVIEN_PUBKEY ?', session['manv'])
-                    nv_row = cursor.fetchone()
-                    if nv_row and nv_row.PUBKEY:
-                        public_key = load_public_key_from_pem(nv_row.PUBKEY)
+                    # Derive public key from password (no DB lookup needed)
+                    private_key = derive_rsa_from_password(session['password'], session['manv'])
+                    public_key = private_key.publickey()
 
-                        # Client-side: encrypt grade with public key
-                        diemthi_encrypted = rsa_encrypt(public_key, diemthi_str)
+                    # Client-side: encrypt grade with public key
+                    diemthi_encrypted = rsa_encrypt(public_key, diemthi_str)
 
-                        cursor.execute('EXEC SP_INS_BANGDIEM ?, ?, ?, ?',
-                                       masv, mahp, diemthi_encrypted, session['manv'])
-                        conn.commit()
-                        flash(f'Nhập điểm cho {masv} thành công!', 'success')
-                    else:
-                        flash('Không tìm thấy khóa công khai!', 'error')
+                    cursor.execute('EXEC SP_INS_BANGDIEM ?, ?, ?, ?',
+                                   masv, mahp, diemthi_encrypted, session['manv'])
+                    conn.commit()
+                    flash(f'Nhập điểm cho {masv} thành công!', 'success')
                 except Exception as e:
                     flash(f'Lỗi: {str(e)}', 'error')
             else:
@@ -493,8 +527,8 @@ def decrypt_grades(malop, masv):
         return jsonify({'error': 'Vui lòng nhập mật khẩu!'}), 400
 
     try:
-        # Load private key from file using password
-        private_key = load_private_key_file(session['manv'], mk_input)
+        # Derive private key from password (deterministic — no file needed)
+        private_key = derive_rsa_from_password(mk_input, session['manv'])
 
         conn = get_db()
         cursor = conn.cursor()
@@ -516,9 +550,7 @@ def decrypt_grades(malop, masv):
 
         return jsonify({'grades': grades})
 
-    except FileNotFoundError:
-        return jsonify({'error': 'Không tìm thấy file khóa bí mật!'}), 400
-    except (ValueError, TypeError):
+    except ValueError:
         return jsonify({'error': 'Mật khẩu không đúng!'}), 400
     except Exception as e:
         return jsonify({'error': f'Lỗi giải mã: {str(e)}'}), 400

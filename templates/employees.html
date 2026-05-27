@@ -5,7 +5,7 @@
 <div class="main-content">
     <div class="page-header">
         <h1>Quản lý Nhân viên</h1>
-        <p>Xem danh sách nhân viên, thêm mới và giải mã lương</p>
+        <p>Xem danh sách nhân viên và quản lý lương</p>
     </div>
 
     <!-- ========== DECRYPT SALARY ========== -->
@@ -32,38 +32,40 @@
         </div>
     </div>
 
-    <!-- ========== UPDATE SALARY ========== -->
-    <div class="section-title">✏️ Cập nhật lương</div>
+    {% if session.get('role') == 1 %}
+    <!-- ========== ADMIN UPDATE SALARY ========== -->
+    <div class="section-title">🛡️ Cập nhật lương</div>
 
     <div class="card mb-3">
         <div class="card-header">
-            <h2>Cập nhật lương — {{ session.get('manv') }}</h2>
+            <h2>Cập nhật lương cho nhân viên</h2>
         </div>
-        <div class="card-body" id="updateSalaryBody">
+        <div class="card-body" id="adminUpdateSalaryBody">
             <div class="crypto-note mb-2">
-                🔐 Lương mới sẽ được mã hóa RSA 2048 bằng public key của bạn
+                🔐 Lương sẽ được mã hóa RSA 2048 bằng public key của nhân viên
                 <strong>tại client</strong> trước khi lưu xuống CSDL.
             </div>
-            <form id="updateSalaryForm" onsubmit="updateSalary(event)">
+            <form id="adminUpdateSalaryForm" onsubmit="adminUpdateSalary(event)">
                 <div class="form-inline">
                     <div class="form-group" style="flex: 1;">
-                        <label for="luong_new">Lương mới</label>
-                        <input type="number" id="luong_new" name="luong_new" class="form-control"
-                               placeholder="VD: 5000000" required>
+                        <label for="admin_manv">Mã nhân viên</label>
+                        <input type="text" id="admin_manv" name="manv" class="form-control"
+                               placeholder="VD: NV01" required>
                     </div>
                     <div class="form-group" style="flex: 1;">
-                        <label for="mk_update">Mật khẩu xác nhận</label>
-                        <input type="password" id="mk_update" name="mk_update" class="form-control"
-                               placeholder="Nhập mật khẩu để xác nhận" required>
+                        <label for="admin_luong_new">Lương mới</label>
+                        <input type="number" id="admin_luong_new" name="luong_new" class="form-control"
+                               placeholder="VD: 5000000" required>
                     </div>
                     <div class="form-group" style="flex: 0;">
                         <label>&nbsp;</label>
-                        <button type="submit" class="btn btn-accent" id="updateSalaryBtn">Cập nhật</button>
+                        <button type="submit" class="btn btn-accent" id="adminUpdateSalaryBtn">Cập nhật</button>
                     </div>
                 </div>
             </form>
         </div>
     </div>
+    {% endif %}
 
     <!-- ========== EMPLOYEE LIST ========== -->
     <div class="section-title">👥 Danh sách nhân viên</div>
@@ -71,9 +73,6 @@
     <div class="card">
         <div class="card-header">
             <h2>Tất cả nhân viên <span class="badge">{{ employees|length }}</span></h2>
-            <button class="btn btn-primary btn-sm" onclick="openModal('addEmployeeModal')">
-                + Thêm NV
-            </button>
         </div>
         <div class="card-body">
             {% if employees %}
@@ -84,7 +83,6 @@
                             <th>Mã NV</th>
                             <th>Họ tên</th>
                             <th>Email</th>
-                            <th style="text-align: center;">Lương</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -93,9 +91,6 @@
                             <td><strong class="text-accent">{{ nv.MANV }}</strong></td>
                             <td>{{ nv.HOTEN }}</td>
                             <td class="text-muted">{{ nv.EMAIL or '—' }}</td>
-                            <td style="text-align: center;">
-                                <span class="encrypted-badge">🔒 Mã hóa</span>
-                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -108,65 +103,6 @@
             </div>
             {% endif %}
         </div>
-    </div>
-</div>
-
-<!-- ========== ADD EMPLOYEE MODAL ========== -->
-<div class="modal-overlay" id="addEmployeeModal">
-    <div class="modal">
-        <div class="modal-header">
-            <h3>Thêm nhân viên mới</h3>
-            <button class="modal-close" onclick="closeModal('addEmployeeModal')">✕</button>
-        </div>
-        <form method="POST">
-            <input type="hidden" name="action" value="add">
-            <div class="modal-body">
-                <div class="crypto-note">
-                    🔐 Mật khẩu sẽ được hash SHA2_256 và lương sẽ được mã hóa RSA 2048
-                    <strong>tại client</strong> trước khi gửi xuống CSDL.
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="add_manv">Mã nhân viên</label>
-                        <input type="text" id="add_manv" name="manv" class="form-control"
-                               placeholder="VD: NV04" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="add_hoten">Họ tên</label>
-                        <input type="text" id="add_hoten" name="hoten" class="form-control"
-                               placeholder="Nguyễn Văn X" required>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="add_email">Email</label>
-                        <input type="email" id="add_email" name="email" class="form-control"
-                               placeholder="abc@fit.edu.vn">
-                    </div>
-                    <div class="form-group">
-                        <label for="add_luong">Lương cơ bản</label>
-                        <input type="number" id="add_luong" name="luong" class="form-control"
-                               placeholder="5000000" required>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="add_tendn">Tên đăng nhập</label>
-                        <input type="text" id="add_tendn" name="tendn" class="form-control"
-                               placeholder="username" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="add_mk">Mật khẩu</label>
-                        <input type="password" id="add_mk" name="mk" class="form-control"
-                               placeholder="••••••" required>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline" onclick="closeModal('addEmployeeModal')">Hủy</button>
-                <button type="submit" class="btn btn-primary">Thêm nhân viên</button>
-            </div>
-        </form>
     </div>
 </div>
 {% endblock %}
@@ -212,22 +148,22 @@
         }
     }
 
-    async function updateSalary(e) {
+    async function adminUpdateSalary(e) {
         e.preventDefault();
 
-        const luongNew = document.getElementById('luong_new').value;
-        const password = document.getElementById('mk_update').value;
-        const btn = document.getElementById('updateSalaryBtn');
+        const manv = document.getElementById('admin_manv').value.trim().toUpperCase();
+        const luongNew = document.getElementById('admin_luong_new').value;
+        const btn = document.getElementById('adminUpdateSalaryBtn');
 
         btn.disabled = true;
         btn.textContent = 'Đang cập nhật...';
 
         try {
-            const resp = await fetch('{{ url_for("update_salary") }}', {
+            const resp = await fetch('{{ url_for("admin_update_salary") }}', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'luong_new=' + encodeURIComponent(luongNew) +
-                      '&mk_update=' + encodeURIComponent(password)
+                body: 'manv=' + encodeURIComponent(manv) +
+                      '&luong_new=' + encodeURIComponent(luongNew)
             });
 
             const data = await resp.json();
@@ -236,9 +172,8 @@
                 showFlash(data.error, 'error');
             } else {
                 showFlash(data.message, 'success');
-                // Clear form
-                document.getElementById('luong_new').value = '';
-                document.getElementById('mk_update').value = '';
+                document.getElementById('admin_manv').value = '';
+                document.getElementById('admin_luong_new').value = '';
             }
 
             btn.disabled = false;

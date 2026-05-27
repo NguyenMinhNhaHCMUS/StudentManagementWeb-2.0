@@ -21,14 +21,14 @@ CREATE OR ALTER PROCEDURE SP_INS_PUBLIC_ENCRYPT_NHANVIEN
     @LUONG      VARBINARY(MAX),     -- Đã mã hóa RSA từ client
     @TENDN      NVARCHAR(100),
     @MK         VARBINARY(MAX),     -- Đã hash SHA2_256 từ client
-    @PUB        NVARCHAR(MAX)       -- Khóa công khai PEM từ client
+    @PUB        NVARCHAR(MAX),      -- Khóa tạo từ client gửi xuống
+    @ROLE       INT
 AS
 BEGIN
     SET NOCOUNT ON;
-
-    -- Chỉ lưu trữ dữ liệu đã mã hóa, không mã hóa tại server
-    INSERT INTO NHANVIEN (MANV, HOTEN, EMAIL, LUONG, TENDN, MATKHAU, PUBKEY)
-    VALUES (@MANV, @HOTEN, @EMAIL, @LUONG, @TENDN, @MK, @PUB);
+    -- Đơn giản là thêm vào DB
+    INSERT INTO NHANVIEN (MANV, HOTEN, EMAIL, LUONG, TENDN, MATKHAU, PUBKEY, ROLE)
+    VALUES (@MANV, @HOTEN, @EMAIL, @LUONG, @TENDN, @MK, @PUB, @ROLE);
 
     PRINT N'Thêm nhân viên thành công: ' + @MANV;
 END
@@ -57,33 +57,6 @@ END
 GO
 
 -- ============================================================
--- SP_UPDATE_LUONG
--- Cập nhật lương (đã mã hóa mới từ client)
--- Xác thực bằng hash mật khẩu trước khi cập nhật
--- ============================================================
-CREATE OR ALTER PROCEDURE SP_UPDATE_LUONG
-    @MANV       VARCHAR(20),
-    @MK         VARBINARY(MAX),     -- Hash SHA2_256 để xác thực
-    @LUONG      VARBINARY(MAX)      -- Lương mới đã mã hóa RSA từ client
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    -- Xác thực mật khẩu
-    IF NOT EXISTS (SELECT 1 FROM NHANVIEN WHERE MANV = @MANV AND MATKHAU = @MK)
-    BEGIN
-        RAISERROR(N'Mật khẩu không đúng!', 16, 1);
-        RETURN;
-    END
-
-    -- Cập nhật lương đã mã hóa mới
-    UPDATE NHANVIEN SET LUONG = @LUONG WHERE MANV = @MANV;
-
-    PRINT N'Cập nhật lương thành công: ' + @MANV;
-END
-GO
-
--- ============================================================
 -- SP_LOGIN
 -- Xác thực đăng nhập: so sánh hash đã tạo từ client
 -- Trả về thông tin nhân viên (không gồm PUBKEY)
@@ -95,10 +68,26 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    -- So sánh trực tiếp hash đã tạo từ client
-    SELECT MANV, HOTEN, EMAIL
+    SELECT MANV, HOTEN, EMAIL, ROLE
     FROM NHANVIEN
     WHERE MANV = @MANV AND MATKHAU = @MK;
+END
+GO
+
+-- ============================================================
+-- SP_UPDATE_LUONG_ADMIN
+-- Admin cập nhật lương (đã mã hóa mới từ client)
+-- ============================================================
+CREATE OR ALTER PROCEDURE SP_UPDATE_LUONG_ADMIN
+    @MANV       VARCHAR(20),
+    @LUONG      VARBINARY(MAX)      -- Lương mới đã mã hóa RSA từ client
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE NHANVIEN SET LUONG = @LUONG WHERE MANV = @MANV;
+
+    PRINT N'Admin cập nhật lương thành công: ' + @MANV;
 END
 GO
 

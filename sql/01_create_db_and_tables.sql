@@ -39,7 +39,8 @@ CREATE TABLE NHANVIEN (
     LUONG       VARBINARY(MAX),                 -- RSA encrypted (from client)
     TENDN       NVARCHAR(100)   NOT NULL UNIQUE,
     MATKHAU     VARBINARY(MAX)  NOT NULL,       -- SHA2_256 hash (from client)
-    PUBKEY      NVARCHAR(MAX)                   -- PEM public key (from client)
+    PUBKEY      NVARCHAR(MAX),                  -- PEM public key (from client)
+    ROLE        INT             NOT NULL DEFAULT 0
 );
 GO
 

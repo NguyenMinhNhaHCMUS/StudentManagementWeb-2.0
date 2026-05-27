@@ -2,16 +2,18 @@
 Lab 04 — Client-side cryptographic operations.
 All encryption/decryption happens here (Python/Flask acting as "client").
 The database only stores and retrieves encrypted data.
+
+RSA key pairs are derived deterministically from the user's password + MANV.
 """
 
 import hashlib
-import os
 
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
-from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
+from cryptography.hazmat.primitives import serialization
 
-# Directory for storing encrypted private key files
-KEYS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'keys')
+from Crypto.PublicKey import RSA
+from Crypto.Cipher import PKCS1_OAEP
+from Crypto.Hash import SHA256
 
 
 # ============================================================
@@ -27,98 +29,86 @@ def sha256_hash(password: str, salt: str) -> bytes:
 
 
 # ============================================================
-# RSA Key Generation & Serialization
+# Deterministic RSA Key Derivation from Password
 # ============================================================
 
-def generate_rsa_keypair():
-    """Generate an RSA 2048 key pair. Returns (private_key, public_key)."""
-    private_key = rsa.generate_private_key(
-        public_exponent=65537,
-        key_size=2048,
+def _deterministic_randfunc(seed: bytes):
+    """
+    Build a deterministic PRNG function from seed using SHA-256 counter mode.
+    Each call returns n bytes derived from HMAC-SHA256(seed || counter).
+    """
+    state = {'counter': 0, 'buffer': b''}
+
+    def randfunc(n: int) -> bytes:
+        while len(state['buffer']) < n:
+            block = hashlib.sha256(
+                seed + state['counter'].to_bytes(4, 'big')
+            ).digest()
+            state['buffer'] += block
+            state['counter'] += 1
+        result = state['buffer'][:n]
+        state['buffer'] = state['buffer'][n:]
+        return result
+
+    return randfunc
+
+
+def derive_rsa_from_password(password: str, manv: str) -> RSA.RsaKey:
+    """
+    Deterministically derive an RSA-2048 key pair from password + manv.
+    Same password + manv → same key pair every time.
+
+    Steps:
+      1. scrypt(password, salt=manv) → 64-byte seed
+      2. SHA-256 counter-mode PRNG seeded from above → RSA-2048
+    """
+    # Step 1: KDF — scrypt stretches the password into a strong seed
+    kdf = Scrypt(
+        salt=manv.encode('utf-8'),
+        length=64,
+        n=2 ** 14,   # CPU/memory cost (≈0.1s on modern hardware)
+        r=8,
+        p=1,
     )
-    return private_key, private_key.public_key()
+    seed = kdf.derive(password.encode('utf-8'))
 
-
-def serialize_public_key(public_key) -> str:
-    """Serialize public key to PEM-encoded string for DB storage."""
-    pem = public_key.public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo,
-    )
-    return pem.decode('utf-8')
-
-
-def load_public_key_from_pem(pem_str: str):
-    """Load a public key object from a PEM-encoded string."""
-    return serialization.load_pem_public_key(pem_str.encode('utf-8'))
+    # Step 2: Build deterministic PRNG, then generate RSA-2048
+    rng = _deterministic_randfunc(seed)
+    private_key = RSA.generate(2048, randfunc=rng)
+    return private_key
 
 
 # ============================================================
-# Private Key File Storage
+# Public Key Serialization (for DB storage)
 # ============================================================
 
-def save_private_key_file(manv: str, private_key, password: str):
-    """
-    Save private key to keys/{manv}.pem, encrypted with the user's password.
-    The password protects the private key at rest via AES encryption.
-    """
-    os.makedirs(KEYS_DIR, exist_ok=True)
-    pem = private_key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.BestAvailableEncryption(
-            password.encode('utf-8')
-        ),
-    )
-    filepath = os.path.join(KEYS_DIR, f'{manv}.pem')
-    with open(filepath, 'wb') as f:
-        f.write(pem)
+def serialize_public_key(private_key: RSA.RsaKey) -> str:
+    """Export public key to PEM string for storage in DB (PUBKEY column)."""
+    return private_key.publickey().export_key('PEM').decode('utf-8')
 
 
-def load_private_key_file(manv: str, password: str):
-    """
-    Load and decrypt private key from keys/{manv}.pem.
-    Raises ValueError if password is wrong.
-    Raises FileNotFoundError if key file is missing.
-    """
-    filepath = os.path.join(KEYS_DIR, f'{manv}.pem')
-    with open(filepath, 'rb') as f:
-        pem = f.read()
-    return serialization.load_pem_private_key(
-        pem, password=password.encode('utf-8')
-    )
+def load_public_key_from_pem(pem_str: str) -> RSA.RsaKey:
+    """Import a public key from PEM string stored in DB."""
+    return RSA.import_key(pem_str.encode('utf-8'))
 
 
 # ============================================================
-# RSA Encryption / Decryption
+# RSA Encryption / Decryption  (OAEP + SHA-256)
 # ============================================================
 
-def rsa_encrypt(public_key, plaintext: str) -> bytes:
+def rsa_encrypt(public_key: RSA.RsaKey, plaintext: str) -> bytes:
     """
-    Encrypt plaintext string using RSA public key with OAEP padding.
+    Encrypt plaintext string using RSA public key with OAEP+SHA-256 padding.
     Returns ciphertext as bytes (suitable for VARBINARY storage).
     """
-    return public_key.encrypt(
-        plaintext.encode('utf-8'),
-        padding.OAEP(
-            mgf=padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm=hashes.SHA256(),
-            label=None,
-        ),
-    )
+    cipher = PKCS1_OAEP.new(public_key, hashAlgo=SHA256)
+    return cipher.encrypt(plaintext.encode('utf-8'))
 
 
-def rsa_decrypt(private_key, ciphertext: bytes) -> str:
+def rsa_decrypt(private_key: RSA.RsaKey, ciphertext: bytes) -> str:
     """
-    Decrypt ciphertext bytes using RSA private key with OAEP padding.
+    Decrypt ciphertext bytes using RSA private key with OAEP+SHA-256 padding.
     Returns plaintext string.
     """
-    plaintext = private_key.decrypt(
-        ciphertext,
-        padding.OAEP(
-            mgf=padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm=hashes.SHA256(),
-            label=None,
-        ),
-    )
-    return plaintext.decode('utf-8')
+    cipher = PKCS1_OAEP.new(private_key, hashAlgo=SHA256)
+    return cipher.decrypt(ciphertext).decode('utf-8')
