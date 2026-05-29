@@ -10,11 +10,6 @@
             <p>Quản lý Sinh viên — Lab 04 Database Security</p>
         </div>
         <div class="login-body">
-            <div class="crypto-note mb-2" style="font-size: 0.78rem;">
-                🔐 Mật khẩu được hash SHA-256 và lương được mã hóa RSA-2048
-                <strong>tại client</strong> trước khi gửi xuống server.
-                Khóa RSA được sinh <strong>xác định</strong> từ mật khẩu — không lưu file.
-            </div>
 
             <form method="POST" action="{{ url_for('register') }}" id="registerForm">
                 <div class="crypto-note mb-2" style="font-size: 0.78rem;">

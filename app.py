@@ -74,7 +74,6 @@ def login():
             cursor = conn.cursor()
             cursor.execute('EXEC SP_LOGIN ?, ?', manv, mk_hash)
             row = cursor.fetchone()
-            conn.close()
 
             if row:
                 # Store basic info + password (needed for RSA key derivation)
@@ -82,10 +81,12 @@ def login():
                 session['hoten'] = row.HOTEN
                 session['email'] = row.EMAIL
                 session['role'] = int(row.ROLE) if row.ROLE is not None else 0
-                session['password'] = mk  # used to derive RSA key on demand
+                session['pubkey_pem'] = row.PUBKEY if row.PUBKEY else None
+                conn.close()
                 flash(f'Đăng nhập thành công! Xin chào {row.HOTEN}', 'success')
                 return redirect(url_for('classes'))
             else:
+                conn.close()
                 flash('Mã nhân viên hoặc mật khẩu không đúng!', 'error')
         except Exception as e:
             flash(f'Lỗi kết nối database: {str(e)}', 'error')
@@ -383,8 +384,8 @@ def students(malop):
                     # Client-side: hash password with SHA2_256
                     mk_hash = sha256_hash(mk_sv, masv)
 
-                    cursor.execute('EXEC SP_INS_SINHVIEN ?, ?, ?, ?, ?, ?, ?',
-                                   masv, hoten, ngaysinh, diachi, malop, tendn, mk_hash)
+                    cursor.execute('EXEC SP_INS_SINHVIEN ?, ?, ?, ?, ?, ?, ?, ?',
+                                   masv, hoten, ngaysinh, diachi, malop, tendn, mk_hash, session['manv'])
                     conn.commit()
                     flash(f'Thêm sinh viên {masv} thành công!', 'success')
                 except Exception as e:
@@ -433,11 +434,11 @@ def students(malop):
 
             if masv and mahp and diemthi_str:
                 try:
-                    # Derive public key from password (no DB lookup needed)
-                    private_key = derive_rsa_from_password(session['password'], session['manv'])
-                    public_key = private_key.publickey()
+                    pubkey_pem = session.get('pubkey_pem')
+                    if not pubkey_pem:
+                        raise ValueError('Không tìm thấy khóa công khai của nhân viên!')
 
-                    # Client-side: encrypt grade with public key
+                    public_key = load_public_key_from_pem(pubkey_pem)
                     diemthi_encrypted = rsa_encrypt(public_key, diemthi_str)
 
                     cursor.execute('EXEC SP_INS_BANGDIEM ?, ?, ?, ?',

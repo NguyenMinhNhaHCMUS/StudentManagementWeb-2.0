@@ -59,7 +59,7 @@ GO
 -- ============================================================
 -- SP_LOGIN
 -- Xác thực đăng nhập: so sánh hash đã tạo từ client
--- Trả về thông tin nhân viên (không gồm PUBKEY)
+-- Trả về thông tin nhân viên (kèm PUBKEY)
 -- ============================================================
 CREATE OR ALTER PROCEDURE SP_LOGIN
     @MANV       VARCHAR(20),
@@ -68,7 +68,7 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    SELECT MANV, HOTEN, EMAIL, ROLE
+    SELECT MANV, HOTEN, EMAIL, ROLE, PUBKEY
     FROM NHANVIEN
     WHERE MANV = @MANV AND MATKHAU = @MK;
 END
@@ -102,10 +102,18 @@ CREATE OR ALTER PROCEDURE SP_INS_SINHVIEN
     @DIACHI     NVARCHAR(200),
     @MALOP      VARCHAR(20),
     @TENDN      NVARCHAR(100),
-    @MK         VARBINARY(MAX)      -- Đã hash SHA2_256 từ client
+    @MK         VARBINARY(MAX),     -- Đã hash SHA2_256 từ client
+    @MANV       VARCHAR(20)
 AS
 BEGIN
     SET NOCOUNT ON;
+
+    -- Kiểm tra quyền quản lý lớp
+    IF NOT EXISTS (SELECT 1 FROM LOP WHERE MALOP = @MALOP AND MANV = @MANV)
+    BEGIN
+        RAISERROR(N'Bạn không có quyền thêm sinh viên vào lớp này!', 16, 1);
+        RETURN;
+    END
 
     -- Lưu trực tiếp hash từ client, không hash lại
     INSERT INTO SINHVIEN (MASV, HOTEN, NGAYSINH, DIACHI, MALOP, TENDN, MATKHAU)

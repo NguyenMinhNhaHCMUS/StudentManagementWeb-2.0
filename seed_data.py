@@ -61,6 +61,7 @@ def seed():
         ('LOP03', 'CNTT K21 - Nhóm 1', 'NV02'),
         ('LOP04', 'CNTT K21 - Nhóm 2', 'NV03'),
     ]
+    class_manager = {malop: manv for malop, _, manv in classes}
     for malop, tenlop, manv in classes:
         cursor.execute('EXEC SP_INS_LOP ?, ?, ?', malop, tenlop, manv)
         print(f'  + Lớp {malop}: {tenlop}')
@@ -78,10 +79,13 @@ def seed():
         ('SV07', 'Trần Thị I',     '2003-07-01', '13 Lê Văn Khương, Q12', 'LOP04', 'TTI', 'sv7891'),
     ]
     for masv, hoten, ns, dc, malop, tendn, mk in students:
+        manv = class_manager.get(malop)
+        if not manv:
+            raise ValueError(f'Không tìm thấy giảng viên quản lý cho lớp {malop}')
         mk_hash = sha256_hash(mk, masv)
         cursor.execute(
-            'EXEC SP_INS_SINHVIEN ?, ?, ?, ?, ?, ?, ?',
-            masv, hoten, ns, dc, malop, tendn, mk_hash,
+            'EXEC SP_INS_SINHVIEN ?, ?, ?, ?, ?, ?, ?, ?',
+            masv, hoten, ns, dc, malop, tendn, mk_hash, manv,
         )
         print(f'  + Sinh viên {masv}: {hoten}')
 
