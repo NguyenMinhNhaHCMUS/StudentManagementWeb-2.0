@@ -1,9 +1,3 @@
--- ============================================================
--- Lab 04: Tạo Database và các bảng cho hệ thống Quản lý Sinh viên
--- Mã hóa/giải mã được thực hiện ở phía CLIENT (Python)
--- DB chỉ lưu trữ dữ liệu đã được mã hóa sẵn
--- ============================================================
-
 -- Tạo Database
 USE master;
 GO

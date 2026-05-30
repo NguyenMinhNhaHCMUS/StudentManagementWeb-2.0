@@ -2,26 +2,20 @@ USE QLSVNhom1;
 GO
 
 -- ============================================================
--- Lab 04: Stored Procedures
--- Tất cả mã hóa/giải mã được thực hiện ở phía CLIENT
--- Stored procedures chỉ lưu trữ và truy vấn dữ liệu đã mã hóa
--- ============================================================
-
--- ============================================================
 -- SP_INS_PUBLIC_ENCRYPT_NHANVIEN
 -- Thêm mới nhân viên với dữ liệu đã được mã hóa từ client:
---   MATKHAU → đã hash SHA2_256 từ client
---   LUONG   → đã mã hóa RSA 2048 từ client
---   PUBKEY  → khóa công khai PEM từ client
+--   MATKHAU
+--   LUONG 
+--   PUBKEY
 -- ============================================================
 CREATE OR ALTER PROCEDURE SP_INS_PUBLIC_ENCRYPT_NHANVIEN
     @MANV       VARCHAR(20),
     @HOTEN      NVARCHAR(100),
     @EMAIL      VARCHAR(20),
-    @LUONG      VARBINARY(MAX),     -- Đã mã hóa RSA từ client
+    @LUONG      VARBINARY(MAX),
     @TENDN      NVARCHAR(100),
-    @MK         VARBINARY(MAX),     -- Đã hash SHA2_256 từ client
-    @PUB        NVARCHAR(MAX),      -- Khóa tạo từ client gửi xuống
+    @MK         VARBINARY(MAX),
+    @PUB        NVARCHAR(MAX),
     @ROLE       INT
 AS
 BEGIN
@@ -76,7 +70,7 @@ GO
 
 -- ============================================================
 -- SP_UPDATE_LUONG_ADMIN
--- Admin cập nhật lương (đã mã hóa mới từ client)
+-- Admin cập nhật lương
 -- ============================================================
 CREATE OR ALTER PROCEDURE SP_UPDATE_LUONG_ADMIN
     @MANV       VARCHAR(20),
@@ -102,7 +96,7 @@ CREATE OR ALTER PROCEDURE SP_INS_SINHVIEN
     @DIACHI     NVARCHAR(200),
     @MALOP      VARCHAR(20),
     @TENDN      NVARCHAR(100),
-    @MK         VARBINARY(MAX),     -- Đã hash SHA2_256 từ client
+    @MK         VARBINARY(MAX),
     @MANV       VARCHAR(20)
 AS
 BEGIN
@@ -286,12 +280,12 @@ GO
 
 -- ============================================================
 -- SP_INS_BANGDIEM
--- Thêm/Cập nhật điểm: DIEMTHI đã được mã hóa RSA từ client
+-- Thêm/Cập nhật điểm: DIEMTHI đã được mã hóa từ client
 -- ============================================================
 CREATE OR ALTER PROCEDURE SP_INS_BANGDIEM
     @MASV       VARCHAR(20),
     @MAHP       VARCHAR(20),
-    @DIEMTHI    VARBINARY(MAX),     -- Đã mã hóa RSA từ client
+    @DIEMTHI    VARBINARY(MAX),
     @MANV       VARCHAR(20)
 AS
 BEGIN
@@ -328,7 +322,7 @@ GO
 -- ============================================================
 -- SP_SEL_BANGDIEM
 -- Truy vấn bảng điểm: trả về DIEMTHI đã mã hóa
--- Client sẽ tự giải mã bằng private key
+-- Client sẽ tự giải mã bằng private key của mình
 -- ============================================================
 CREATE OR ALTER PROCEDURE SP_SEL_BANGDIEM
     @MASV       VARCHAR(20),

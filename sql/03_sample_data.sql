@@ -1,12 +1,6 @@
 USE QLSVNhom1;
 GO
-
--- ============================================================
--- Lab 04: Dữ liệu mẫu - Chỉ học phần (không cần mã hóa)
--- Sử dụng seed_data.py để thêm nhân viên, sinh viên, điểm
--- (vì mã hóa được thực hiện ở phía client/Python)
--- ============================================================
-
+--Sau khi chạy xong file này thì chạy file seed_data.py
 -- Thêm học phần
 EXEC SP_INS_HOCPHAN 'HP01', N'Cơ sở dữ liệu', 4;
 EXEC SP_INS_HOCPHAN 'HP02', N'Lập trình web', 3;
